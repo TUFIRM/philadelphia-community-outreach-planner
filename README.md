@@ -74,7 +74,8 @@ philadelphia-community-outreach-planner/
 │   ├── 05_outreach_heatmap.py           private outreach file (loaded in the app)
 │   ├── 06_crime_data.py                 PPD crime, shootings, stops; PSAs and divisions
 │   ├── 07_publish_reference_layers.py   copies hand-placed layers from data/raw/reference/
-│   └── 08_address_lookup.py             public OPA address lookup for in-browser matching
+│   ├── 08_address_lookup.py             public OPA address lookup for in-browser matching
+│   └── 09_community_orgs.py             community organizations (list + OSM) and RCOs
 ├── data/                     NOT in git (big or private); on the S: drive it sits next to
 │                             this folder and .env points PLANNER_DATA_DIR at it
 │   ├── raw/                  downloads you put here yourself
@@ -140,6 +141,7 @@ python scripts/05_outreach_heatmap.py           # private outreach file; only wh
 python scripts/06_crime_data.py                 # 20-40 min the first time; monthly after that
 python scripts/07_publish_reference_layers.py   # only after editing data/raw/reference/
 python scripts/08_address_lookup.py             # after refreshing OPA (address lookup for the app)
+python scripts/09_community_orgs.py             # after editing the CBO list; also refreshes RCOs
 ```
 
 Where every dataset comes from, and where to edit it, is in `DATA_SOURCES.md`.
@@ -348,6 +350,21 @@ is private and only ever loaded on the user's own computer (decided
   demographics plus the NAC's coordinator and contact) and NAC office points.
   Files: `docs/data/NeighborhoodAdvisoryCommittees.geojson` and
   `docs/data/NAC_Offices.geojson`.
+- **Community Organizations** (off by default): the FIRM CBO list
+  (`data/raw/north_philly_cbos_contacts.csv`) plus community centers, food
+  pantries and service organizations found in OpenStreetMap, limited to the
+  8 priority ZIP codes. Colored by type (a two-color dot = two types; a dark
+  outline = on the FIRM list); click one for its contact details. Homes,
+  shelters, nursing homes, recovery residences, unions and fraternities are
+  left out. Script 09 also writes `data/processed/community_orgs/cbos_review.csv`
+  for checking what was added. File: `docs/data/cbos.geojson`.
+- **Registered Community Organizations** (off by default): City RCO boundaries
+  that touch a priority ZIP, each in its own color. Click one for its name,
+  meeting place, primary and alternate contacts and demographics. Contacts'
+  home addresses are not published. File: `docs/data/rcos.geojson`.
+- **Pick features in any layer**: click a layer's feature count (for example
+  "152 features") to list its features, search them, and tick all, none or
+  some to choose which are shown on the map ("135 of 152 features shown").
 - **Places of interest** (Layers tab, off by default): businesses, places of
   worship, schools, health care, civic places and parks from OpenStreetMap,
   shown at street zoom. Clicking one opens a place card with Directions,

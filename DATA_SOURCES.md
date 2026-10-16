@@ -142,6 +142,14 @@ pages show the owner. They are also referenced in the ArcGIS Pro project.
 | **Original Proposed Area of Focus** (the proposed outreach boundary; **private**) | `data/private_app_files/Original_Proposed_Area_of_Focus.geojson` | **Not published.** Loaded in the app with Load private files and added to the base plan | Cut out of the same Polygons of interest layer on 2026-10-16 | Internal (made by the project) |
 | **Schools of Interest** (Duckrey, Bethune, Dunbar) | `project/Schools_of_Interest.geojson` | `docs/data/Schools_of_Interest.geojson` | The KML's `Points` layer, exported to GeoJSON | Internal (made by the project) |
 
+## 5b. Community organizations (script 09)
+
+| Dataset | Used for | Where to edit | Published file | Link | Internal / External |
+|---|---|---|---|---|---|
+| **FIRM CBO contact list** (`data/raw/north_philly_cbos_contacts.csv`) | Community Organizations layer (organizations marked "FIRM list") | **Edit the CSV**, then run `python scripts/09_community_orgs.py`. Addresses are placed with the OPA address file, then OpenStreetMap Nominatim, then the list's own coordinates | `docs/data/cbos.geojson` | (internal list) | Internal (FIRM) |
+| **OpenStreetMap organizations** in the 8 priority ZIPs (community centers, social facilities, food banks, NGO/charity/association offices) via the Overpass API | More organizations for the same layer | Exclusion and category rules at the top of script 09 (`EXCLUDE_*`, `CATEGORIES`); review `data/processed/community_orgs/cbos_review.csv` | `docs/data/cbos.geojson` | <https://overpass-api.de/api/interpreter> · data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) | External (OpenStreetMap) |
+| **Registered Community Organizations** (`Zoning_RCO`), features touching a priority ZIP | RCO layer: boundaries, meeting place, primary and alternate contacts, registration years. Contacts' home addresses are not published | Re-run script 09 | `docs/data/rcos.geojson` | <https://metadata.phila.gov/#home/representationdetails/55438ab59b989a05172d0d57/> · `https://services.arcgis.com/fLeGjb7u4uXqeF9q/arcgis/rest/services/Zoning_RCO/FeatureServer/0` | External (City Planning Commission) |
+
 ## 6. Live services the app calls (no local file)
 
 | Service | Used for | Link | Internal / External |

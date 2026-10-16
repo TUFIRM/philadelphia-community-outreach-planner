@@ -218,6 +218,16 @@
   .poi-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-size: 12px; color: var(--ink-2); }
   .poi-legend span { display: inline-flex; align-items: center; gap: 4px; }
   .poi-legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .linkish { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+  .linkish:hover, .linkish[aria-expanded="true"] { color: var(--accent, #9D2235); }
+  .feature-picker { margin-top: 8px; }
+  .feature-picker .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .feature-picker input[type=search] { flex: 1 1 140px; min-width: 0; }
+  .fp-list { max-height: 220px; overflow-y: auto; margin-top: 6px; padding: 4px 6px; border: 1px solid var(--rule); border-radius: 4px; font-size: 13px; }
+  .fp-list label { display: flex; gap: 6px; align-items: baseline; padding: 1px 0; cursor: pointer; }
+  .fp-list label[hidden] { display: none; }
+  .cbo-pin { display: block; width: 14px; height: 14px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid #fff; box-shadow: 0 0 0 0.5px rgba(0,0,0,.45); }
+  .cbo-pin.firm { border: 2.5px solid #1F2933; box-shadow: none; }
 
   /* map extras */
   .leaflet-tooltip.area-tag { background: transparent; border: 0; box-shadow: none; padding: 0; }
@@ -477,6 +487,68 @@ function nacContactHtml(p) {
   return lines.filter(Boolean).map(l => `<div>${l}</div>`).join('');
 }
 
+/* ---------- community organizations: categories, symbols, legend ---------- */
+const CBO_CATEGORIES = [
+  ['Food', '#D55E00'], ['Faith-based', '#7A5195'], ['Youth & education', '#0072B2'], ['Seniors', '#CC79A7'],
+  ['Health & social services', '#009E73'], ['Housing & civic', '#8C6D31'], ['Arts & culture', '#E69F00'],
+  ['Community centers & recreation', '#56B4E9'],
+];
+const CBO_COLOR = Object.fromEntries(CBO_CATEGORIES);
+const cboCats = f => String((f.properties || {}).categories || '').split(';').filter(c => CBO_COLOR[c]);
+/** One color, or a half-and-half split when an organization is in two categories. */
+function cboFill(f) {
+  const c = cboCats(f).map(k => CBO_COLOR[k]);
+  return c.length > 1 ? `linear-gradient(90deg, ${c[0]} 50%, ${c[1]} 50%)` : (c[0] || '#7F7F7F');
+}
+function cboMarker(f, ll) {
+  const firm = (f.properties || {}).source === 'FIRM list';
+  return L.marker(ll, { pane: 'pointsPane', pmIgnore: true, snapIgnore: true, keyboard: false,
+    icon: L.divIcon({ className: '', iconSize: [14, 14], iconAnchor: [7, 7],
+      html: `<span class="cbo-pin${firm ? ' firm' : ''}" style="background:${cboFill(f)}"></span>` }) });
+}
+function cboLegendHtml() {
+  return `<div class="poi-legend">${CBO_CATEGORIES.map(([k, c]) => `<span><i style="background:${c}"></i>${esc(k)}</span>`).join('')}
+    <span><i style="background:linear-gradient(90deg, #D55E00 50%, #7A5195 50%)"></i>Two colors = two categories</span>
+    <span><i style="background:#fff;box-shadow:0 0 0 2px #1F2933 inset"></i>Dark outline = on the FIRM contact list</span></div>`;
+}
+const RCO_PALETTE = ['#E6194B', '#3CB44B', '#4363D8', '#F58231', '#911EB4', '#42D4F4', '#F032E6', '#7BA400',
+  '#9A6324', '#800000', '#469990', '#000075', '#C08A00', '#E15F99', '#2F4B7C', '#A05195'];
+/** Each RCO gets its own color (stable: from its name), so overlapping boundaries can be told apart. */
+function rcoColor(f) {
+  const s = String((f.properties || {}).name || '');
+  let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return RCO_PALETTE[h % RCO_PALETTE.length];
+}
+
+/** Contact card for a community organization (CBO) or Registered Community Organization (RCO). */
+function orgContactHtml(p, kind) {
+  const web = tidy(p.website), href = web && /^https?:\/\//i.test(web) ? web : (web && /\./.test(web) ? `https://${web}` : '');
+  const tel = v => `<a href="tel:${esc(String(v).replace(/[^\d+]/g, ''))}">${esc(v)}</a>`;
+  const mail = v => `<a href="mailto:${esc(v)}">${esc(v)}</a>`;
+  const grey = s => `<span style="color:#505B6E">${s}</span>`;
+  const person = (n, ph, em, label) => (tidy(n) || tidy(ph) || tidy(em)) &&
+    `${label}: ${[tidy(n) && esc(tidy(n)), tidy(ph) && tel(tidy(ph)), tidy(em) && mail(tidy(em))].filter(Boolean).join(' · ')}`;
+  const cats = kind === 'cbo' ? String(p.categories || '').split(';').filter(c => CBO_COLOR[c]) : [];
+  const since = tidy(p.registered_since), until = tidy(p.registration_expires);
+  const lines = [
+    `<strong>${esc(tidy(p.name) || (kind === 'rco' ? 'Registered Community Organization' : 'Community organization'))}</strong>`,
+    kind === 'rco' ? grey(`Registered Community Organization${tidy(p.org_type) ? ` · ${esc(tidy(p.org_type))}` : ''}`)
+      : tidy(p.type) && grey(esc(tidy(p.type))),
+    cats.length && cats.map(c => `<span style="white-space:nowrap"><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${CBO_COLOR[c]};margin-right:3px"></i>${esc(c)}</span>`).join(' &nbsp;'),
+    tidy(p.address) && esc(tidy(p.address)),
+    tidy(p.meeting_location) && `Meets at: ${esc(tidy(p.meeting_location))}`,
+    kind === 'rco' ? person(p.contact_name, p.phone, p.email, 'Primary contact')
+      : tidy(p.contact_name) && `Contact: ${esc(tidy(p.contact_name))}${tidy(p.contact_title) ? `, ${esc(tidy(p.contact_title))}` : ''}`,
+    kind !== 'rco' && tidy(p.phone) && `Phone: ${tel(tidy(p.phone))}`,
+    kind !== 'rco' && tidy(p.email) && `Email: ${mail(tidy(p.email))}`,
+    kind === 'rco' && person(p.alt_contact_name, p.alt_phone, p.alt_email, 'Alternate contact'),
+    tidy(p.preferred_contact) && `Preferred contact method: ${esc(tidy(p.preferred_contact))}`,
+    href && `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(web.replace(/^https?:\/\//i, '').replace(/\/$/, ''))}</a>`,
+    (since || until) && grey(`Registered${since ? ` since ${esc(since)}` : ''}${until ? `${since ? ',' : ''} through ${esc(until)}` : ''}`),
+  ];
+  return lines.filter(Boolean).map(l => `<div>${l}</div>`).join('');
+}
+
 /* ---------- linking point layers to the polygons they belong to ---------- */
 const STOP_WORDS = new Set(['the', 'of', 'and', 'inc', 'cdc', 'corp', 'corporation', 'association', 'assn', 'community', 'philadelphia',
   'phila', 'greater', 'center', 'council', 'de', 'en', 'office', 'nac', 'neighborhood', 'action', 'partners', 'development', 'satelite', 'satellite']);
@@ -621,6 +693,16 @@ const SLOTS = [
     featureColor: f => { const a = catchmentAreaFor(f); return a ? a.color : C.amber; },
     tipExtra: f => { const a = catchmentAreaFor(f); return a ? `Catchment: ${esc(a.name)}` : 'No catchment polygon in this plan'; },
     style: { color: C.amber, fillOpacity: 1, radius: 6 }, help: 'Schools used as planning reference points, colored like their catchment area.' },
+  { key: 'cbos', title: 'Community Organizations (priority ZIPs)', kind: 'point', url: 'data/cbos.geojson', optional: true, visible: false,
+    labelField: 'name', labelFmt: tidy, popup: f => orgContactHtml(f.properties || {}, 'cbo'),
+    featureColor: f => CBO_COLOR[cboCats(f)[0]] || '#7F7F7F', marker: cboMarker, legend: cboLegendHtml,
+    style: { color: '#0B6E4F', fillOpacity: 1, radius: 6 },
+    help: 'Community-based organizations in Temple’s 8 priority ZIP codes: the FIRM contact list plus food pantries, community centers and service organizations from OpenStreetMap, colored by type. Click one for its contact details.' },
+  { key: 'rcos', title: 'Registered Community Organizations (RCOs)', kind: 'area', url: 'data/rcos.geojson', optional: true, visible: false,
+    analyzeOnClick: true, compare: 'Community', labelField: 'name', labelFmt: tidy, zoomLabels: 14,
+    infoCard: f => orgContactHtml(f.properties || {}, 'rco'), featureColor: rcoColor,
+    style: { color: '#8E5A00', fillOpacity: 0.06, lineOpacity: 0.9, weight: 1.6, dashArray: '4 3' },
+    help: 'RCO boundaries (City Planning Commission) that touch a priority ZIP, each in its own color. RCOs are notified of zoning and development projects; boundaries can overlap. Click one for its name, contacts and demographics.' },
   { key: 'nacOffices', title: 'NAC Offices', kind: 'point', url: 'data/NAC_Offices.geojson', optional: true, visible: false,
     labelField: 'ORGANIZATION', labelFmt: tidy,
     popup: f => nacContactHtml(f.properties || {}) + nacOfficeAreaNote(f),
@@ -1309,7 +1391,9 @@ function buildLeaflet(slot, entry) {
     pane: pane.pane, renderer: pane.renderer,
     // pane/renderer go on the GeoJSON options (used for polygons); points pick their own pane
     style: f => (f.geometry && /Point/.test(f.geometry.type) ? pointStyle(slot, f) : slotPathStyle(slot, f)),
-    pointToLayer: (f, ll) => L.circleMarker(ll, { ...pointStyle(slot, f), pmIgnore: true, snapIgnore: true }),
+    filter: f => !(entry.hidden && entry.hidden.has(f)),   // features unticked in the layer's feature list
+    pointToLayer: (f, ll) => (slot.marker ? slot.marker(f, ll)
+      : L.circleMarker(ll, { ...pointStyle(slot, f), pmIgnore: true, snapIgnore: true })),
     onEachFeature: (f, l) => {
       l.bindTooltip(() => tipFor(slot, f), { sticky: slot.kind !== 'point', direction: 'top', className: 'ref-tip' });
       if (slot.popup) l.bindPopup(() => slot.popup(f));
@@ -1385,9 +1469,20 @@ function applySlotStyle(key) {
   const s = styleOf(slot);
   e.leaflet.eachLayer(l => {
     if (l instanceof L.CircleMarker) { l.setStyle({ fillColor: featureColorOf(slot, l.feature), fillOpacity: s.fillOpacity, opacity: s.fillOpacity }); l.setRadius(s.radius ?? 5); }
-    else l.setStyle(slotPathStyle(slot, l.feature));
+    else if (l.setStyle) l.setStyle(slotPathStyle(slot, l.feature));   // custom markers (slot.marker) keep their own symbol
   });
   restyleLinkedPoints(); updateLabels(); renderSlots();
+}
+
+/** Redraw a layer after features are ticked or unticked in its feature list (the full data stays in entry.fc). */
+function rebuildSlotLayer(key) {
+  const slot = SLOTS.find(s => s.key === key), e = state.layers[key];
+  if (!e || !e.fc) return;
+  if (e.leaflet) map.removeLayer(e.leaflet);
+  e.leaflet = buildLeaflet(slot, e);
+  e.labelPts = labelPoints(slot, { features: e.fc.features.filter(f => !(e.hidden && e.hidden.has(f))) }, e.labelField);
+  if (e.visible) e.leaflet.addTo(map);
+  reorderRefLayers(); restyleLinkedPoints(); updateLabels();
 }
 
 const geoCache = new Map();
@@ -2947,6 +3042,28 @@ $$('.tab').forEach(t => t.addEventListener('click', () => showTab(t.id.replace('
 
 const HEAT_LABELS = { total: 'All members', active: 'Active', disengaged: 'Disengaged', milestone: 'Milestone complete', inquiry: 'Inquiry' };
 
+/* ---------- per-layer feature list: click the feature count, tick the features to show ---------- */
+state.pickerOpen = null; state.pickerQuery = '';
+function featureCountHtml(s, e) {
+  const n = e.fc.features.length, shown = n - (e.hidden ? e.hidden.size : 0);
+  return `<button class="linkish" data-act="pick" aria-expanded="${state.pickerOpen === s.key}" title="List the features and choose which to show">${
+    shown < n ? `<strong>${shown.toLocaleString()}</strong> of ${n.toLocaleString()} features shown` : `<strong>${n.toLocaleString()}</strong> features`}</button>`;
+}
+function featurePickerHtml(s, e) {
+  const rows = e.fc.features.map((f, i) => ({ i, name: labelOf(s, f, e.labelField) || `Feature ${i + 1}`, f }))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const q = state.pickerQuery.toLowerCase();
+  return `<div class="feature-picker">
+    <div class="row"><input type="search" class="small" data-act="pick-search" placeholder="Search ${rows.length.toLocaleString()} features…" value="${esc(state.pickerQuery)}">
+      <button class="btn quiet small" data-act="pick-all">Select all</button><button class="btn quiet small" data-act="pick-none">Select none</button></div>
+    <div class="fp-list">${rows.map(r => `<label${q && !r.name.toLowerCase().includes(q) ? ' hidden' : ''}><input type="checkbox" data-act="pick-one" data-i="${r.i}" ${e.hidden && e.hidden.has(r.f) ? '' : 'checked'}> ${esc(r.name)}</label>`).join('')}</div>
+    <p class="fieldnote">Select all / none apply to the features matching the search. Unticked features are only hidden on the map.</p></div>`;
+}
+function updatePickerCount(slotEl, s, e) {
+  const btn = slotEl.querySelector('[data-act="pick"]');
+  if (btn) btn.outerHTML = featureCountHtml(s, e);
+}
+
 /** The Layers tab: one row ("slot") per SLOTS entry with show/zoom/style controls. */
 function renderSlots() {
   $('#slots').innerHTML = SLOTS.map(s => {
@@ -2963,13 +3080,15 @@ function renderSlots() {
     } else if (e) {
       const count = s.kind === 'heat'
         ? `<strong>${Math.round(e.members || 0).toLocaleString()}</strong> members in ${e.rows.length.toLocaleString()} ${e.cell ? 'grid cells' : 'street blocks'}`
-        : `<strong>${e.fc.features.length.toLocaleString()}</strong> features${e.fileName && e.fileName.startsWith('City') ? ` <span style="color:#505B6E">(live from ${esc(e.fileName)})</span>` : ''}`;
+        : `${featureCountHtml(s, e)}${e.fileName && e.fileName.startsWith('City') ? ` <span style="color:#505B6E">(live from ${esc(e.fileName)})</span>` : ''}`;
       const status = s.kind === 'heat' && e.statuses.length > 1
         ? `<label class="inline">Show <select class="small" data-act="status">${e.statuses.map(k => `<option value="${k}" ${k === e.status ? 'selected' : ''}>${HEAT_LABELS[k]}</option>`).join('')}</select></label>` : '';
       body += `<p class="status">${count}</p>
         <div class="row controls"><label class="inline"><input type="checkbox" data-act="toggle" ${e.visible ? 'checked' : ''}> Show</label>
           ${s.kind !== 'heat' ? '<button class="btn quiet small" data-act="zoom">Zoom to</button>' : ''}
-          <button class="btn quiet small" data-act="style">Style</button>${status}</div>`;
+          ${s.marker ? '' : '<button class="btn quiet small" data-act="style">Style</button>'}${status}</div>
+        ${s.kind !== 'heat' && state.pickerOpen === s.key ? featurePickerHtml(s, e) : ''}
+        ${s.legend && e.visible ? s.legend() : ''}`;
     } else if (s.kind === 'heat') {
       body += `<p class="status">Not loaded (private).</p><p class="fieldnote">Use <strong>Load private files</strong> at the top of this tab and pick the outreach CSV made by <code>scripts/05_outreach_heatmap.py</code>.</p>`;
     } else {
@@ -2984,6 +3103,30 @@ $('#slots').addEventListener('click', e => {
   const key = btn.closest('.slot').dataset.key, slot = SLOTS.find(s => s.key === key);
   if (btn.dataset.act === 'zoom') fitTo([state.layers[key] && state.layers[key].leaflet]);
   if (btn.dataset.act === 'style') openSlotStyle(slot, btn);
+  if (btn.dataset.act === 'pick') {
+    if (state.pickerOpen !== key) state.pickerQuery = '';
+    state.pickerOpen = state.pickerOpen === key ? null : key;
+    renderSlots();
+    const box = $(`.slot[data-key="${key}"] [data-act="pick-search"]`);
+    if (box) box.focus();
+  }
+  if (btn.dataset.act === 'pick-all' || btn.dataset.act === 'pick-none') {
+    const e2 = state.layers[key], show = btn.dataset.act === 'pick-all', slotEl = btn.closest('.slot');
+    e2.hidden = e2.hidden || new Set();
+    slotEl.querySelectorAll('.fp-list label:not([hidden]) input').forEach(cb => {
+      cb.checked = show;
+      const f = e2.fc.features[+cb.dataset.i];
+      if (show) e2.hidden.delete(f); else e2.hidden.add(f);
+    });
+    rebuildSlotLayer(key); updatePickerCount(slotEl, slot, e2);
+  }
+});
+$('#slots').addEventListener('input', e => {
+  const box = e.target.closest('[data-act="pick-search"]');
+  if (!box) return;
+  state.pickerQuery = box.value;
+  const q = box.value.trim().toLowerCase();
+  box.closest('.feature-picker').querySelectorAll('.fp-list label').forEach(l => { l.hidden = !!q && !l.textContent.toLowerCase().includes(q); });
 });
 $('#slots').addEventListener('change', e => {
   const el = e.target.closest('[data-act]');
@@ -3006,6 +3149,12 @@ $('#slots').addEventListener('change', e => {
   }
   if (el.dataset.act === 'status') { entry.status = el.value; setHeatData(entry); renderSlots(); renderLegend(); }
   if (el.dataset.act === 'category') { entry.category = el.value; drawPoi(); }
+  if (el.dataset.act === 'pick-one') {
+    const f = entry.fc.features[+el.dataset.i];
+    entry.hidden = entry.hidden || new Set();
+    if (el.checked) entry.hidden.delete(f); else entry.hidden.add(f);
+    rebuildSlotLayer(key); updatePickerCount(el.closest('.slot'), SLOTS.find(s => s.key === key), entry);
+  }
 });
 
 let listIds = '';
