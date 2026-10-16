@@ -1,0 +1,44 @@
+# secrets: the Census API key lives only in .env (never in code or .env.example)
+.env
+.env.*
+!.env.example
+*.key
+philly_acs_tracts.py
+
+# big or private data (see README); data/ normally lives outside the repo
+/data/
+*.gpkg
+*.gpkg-journal
+*.shp
+*.dbf
+*.shx
+*.prj
+*.cpg
+
+# member lists must never be committed, even by accident
+*gateway_clients*
+*Gateway Clients*
+*outreach_geocoded*
+
+# private files loaded in the app from the user's computer: never publish
+*private_app_files*
+*outreach_private*
+Original_Proposed_Area_of_Focus*
+*.kml
+*.kmz
+
+# local tooling and backups
+.claude/
+*.bundle
+
+# python / editors / OS
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
