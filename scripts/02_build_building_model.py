@@ -48,7 +48,10 @@ EXCLUDE_VPI_VACANT = True            # VPI buildings get zero households
 # Starting guess that a unit WITHOUT a homestead exemption is owner-occupied.
 # Only a seed: step 8 rescales every tract to ACS owner_occ / renter_occ.
 P_OWNER_NO_HOMESTEAD = {"single": 0.35, "condo": 0.35, "multi": 0.05}
-IPF_ITERATIONS = 50
+# Starting guess for a unit WITH a homestead exemption. Not 1.0: a zero renter seed can never grow,
+# so in tracts where OPA homesteads exceed ACS owners the raking could not reach the ACS totals.
+P_OWNER_HOMESTEAD = 0.95
+IPF_ITERATIONS = 200
 EXPECTED_OPA_RECORDS = 500_000       # Philadelphia has ~580k OPA accounts; warn if far fewer
 
 # Whole words only: plain "CONVENT" used to match "TWIN CONVENTIONAL" and turned ~37,000 houses into
@@ -355,8 +358,8 @@ def balance_occupied_units(b):
     rest = (units - h).clip(lower=0)
     kind = np.where(b["condo_records"].fillna(0) > 0, "condo", np.where(units <= 1, "single", "multi"))
     p = pd.Series(kind, index=b.index).map(P_OWNER_NO_HOMESTEAD)
-    own = (h + p * rest).where(avail > 0, 0.0)
-    rnt = (units - own).clip(lower=0).where(avail > 0, 0.0)
+    own = (P_OWNER_HOMESTEAD * h + p * rest).where(avail > 0, 0.0)
+    rnt = ((1 - P_OWNER_HOMESTEAD) * h + (1 - p) * rest).where(avail > 0, 0.0)
     fb = b["allocation_fallback"] == "footprint_area"
     own[fb], rnt[fb] = 0.5, 0.5
     # a tenure with no seed anywhere in the tract is spread over available units
