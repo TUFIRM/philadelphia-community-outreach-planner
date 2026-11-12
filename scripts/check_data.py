@@ -171,8 +171,8 @@ def num(v):
 def geoid(v): return str(v or '').strip().removesuffix('.0').zfill(11)
 
 tracts = {}
-p = DATA / 'philly_tracts_acs2024.csv'
-if not p.exists(): FAIL('ACS tracts', 'missing docs/data/philly_tracts_acs2024.csv (no demographics)')
+p = DATA / 'philly_tracts_acs.csv'
+if not p.exists(): FAIL('ACS tracts', 'missing docs/data/philly_tracts_acs.csv (no demographics) - run scripts/01_download_acs_tracts.py')
 else:
     with open(p, encoding='utf-8-sig', newline='') as f:
         rd = csv.DictReader(f); hdr = rd.fieldnames or []
@@ -396,6 +396,43 @@ def crime_checks():
 
 try: crime_checks()
 except Exception as e: FAIL('Crime data', f'check crashed: {type(e).__name__}: {e}')
+
+# ---------------------------------------------------------------- freshness (is anything out of date?)
+from datetime import date
+TODAY = date.today()
+def months_between(a, b): return (b.year - a.year) * 12 + b.month - a.month
+
+def freshness():
+    m = CRIME / 'meta.json'
+    if m.exists():
+        last = (load_json(m).get('months') or [''])[-1]
+        if last:
+            behind = months_between(date(int(last[:4]), int(last[5:7]), 1), TODAY)
+            (WARN if behind > 3 else PASS)('Fresh: crime', f'latest month {last} ({behind} months ago)'
+                + ('; run scripts/update_data.py' if behind > 3 else ''))
+    p = DATA / 'acs_meta.json'
+    if not p.exists(): WARN('Fresh: ACS', 'docs/data/acs_meta.json missing - run scripts/01_download_acs_tracts.py')
+    else:
+        a = load_json(p); y = int(a.get('year', 0))
+        # a new 5-year release comes out each December: in 2026 the newest is 2024 (2020-2024), from Dec 2026 2025
+        newest = TODAY.year - (1 if TODAY.month == 12 else 2)
+        (WARN if y < newest else PASS)('Fresh: ACS', f'using ACS {a.get("years", y)} (downloaded {a.get("downloaded", "?")})'
+            + (f'; ACS {newest - 4}-{newest} should be out - update_data.py downloads it when the Census API has it' if y < newest else ''))
+    p = DATA / 'police_contacts.json'
+    if p.exists():
+        as_of = str(load_json(p).get('as_of', ''))
+        try: age = (TODAY - date.fromisoformat(as_of)).days
+        except ValueError: age = 9999
+        (WARN if age > 90 else PASS)('Fresh: police captains', f'checked {as_of or "never"} ({age} days ago)'
+            + ('; check the captains on phillypolice.com and update docs/data/police_contacts.json (see README)' if age > 90 else ''))
+    opa = PRIVATE.parent / 'raw' / 'OPA_PROPERTIES_PUBLIC.csv'
+    if opa.exists():
+        age = (TODAY - date.fromtimestamp(opa.stat().st_mtime)).days
+        (WARN if age > 62 else PASS)('Fresh: OPA / building model', f'OPA file downloaded {age} days ago'
+            + ('; run scripts/update_data.py' if age > 62 else ''))
+
+try: freshness()
+except Exception as e: WARN('Freshness', f'check crashed: {type(e).__name__}: {e}')
 
 # ---------------------------------------------------------------- report
 colors = {'PASS': '\033[32m', 'WARN': '\033[33m', 'FAIL': '\033[31m'}

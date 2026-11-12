@@ -38,6 +38,7 @@ CBO_CSV = RAW / "north_philly_cbos_contacts.csv"
 OUT_DIR = PROCESSED / "community_orgs"
 CITY_GIS = "https://services.arcgis.com/fLeGjb7u4uXqeF9q/arcgis/rest/services"
 OVERPASS = "https://overpass-api.de/api/interpreter"
+OVERPASS_URLS = [OVERPASS, "https://overpass.private.coffee/api/interpreter"]   # same backup the app uses
 NOMINATIM = "https://nominatim.openstreetmap.org/search"
 UA = {"User-Agent": "Temple FIRM community outreach planner (firm@temple.edu)"}
 PUBLISH_COLS = ["name", "type", "categories", "address", "zip", "phone", "email", "website", "contact_name", "contact_title", "source"]
@@ -125,10 +126,23 @@ def load_list(zips, lookup):
 def osm_finds(zips):
     w, s, e, n = zips.total_bounds
     q = "[out:json][timeout:120];(" + "".join(f"{f}({s},{w},{n},{e});" for f in OSM_FILTERS) + ");out center tags;"
-    r = requests.post(OVERPASS, data={"data": q}, headers=UA, timeout=180)
-    r.raise_for_status()
+    elements, last = None, None
+    for attempt in range(6):                  # main server and a backup, a few rounds (Overpass is often busy)
+        url = OVERPASS_URLS[attempt % len(OVERPASS_URLS)]
+        try:
+            r = requests.post(url, data={"data": q}, headers=UA, timeout=180)
+            r.raise_for_status()
+            elements = r.json().get("elements", [])
+            break
+        except (requests.RequestException, ValueError) as err:
+            last = err
+            wait = 30 * (attempt // len(OVERPASS_URLS) + 1)
+            print(f"  Overpass ({url}) failed: {err}; trying again in {wait}s")
+            time.sleep(wait)
+    if elements is None:
+        raise RuntimeError(f"OpenStreetMap (Overpass) did not answer: {last}")
     out = []
-    for el in r.json().get("elements", []):
+    for el in elements:
         t = el.get("tags", {})
         name = t.get("name", "").strip()
         lon, lat = (el.get("lon"), el.get("lat")) if "lon" in el else (el.get("center", {}).get("lon"), el.get("center", {}).get("lat"))

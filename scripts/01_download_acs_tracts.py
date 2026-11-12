@@ -5,10 +5,15 @@ Philadelphia census tracts + ACS 5-year estimates. This is the master data:
 every building-level number later is scaled so each tract adds back up to
 these values.
 
-Outputs
-    data/processed/acs/philly_tracts_acs2024.gpkg
-    data/processed/acs/philly_tracts_acs2024.csv   (also copied to docs/data/)
+Outputs (YYYY = the ACS release year, e.g. 2024 for 2020-2024)
+    data/processed/acs/philly_tracts_acsYYYY.gpkg
+    data/processed/acs/philly_tracts_acsYYYY.csv   (published as docs/data/philly_tracts_acs.csv)
     data/processed/acs/field_dictionary.csv
+    docs/data/acs_meta.json                         (which release is in use; read by common.py)
+
+The release year comes from docs/data/acs_meta.json. update_data.py checks each month whether
+the Census Bureau has published a newer one and, if so, runs this script for it:
+    set ACS_YEAR=2025 & python scripts/01_download_acs_tracts.py      (by hand, Windows)
 
 Set your Census API key in .env (never commit it):
     CENSUS_API_KEY=your_key_here
@@ -17,13 +22,15 @@ Run from the repo root:
     python scripts/01_download_acs_tracts.py
 """
 
+import json
 import os
+from datetime import date
 
 import geopandas as gpd
 import pandas as pd
 import requests
 
-from common import ACS_DIR, ACS_YEAR, TRACT_CSV, TRACT_GPKG, publish
+from common import ACS_DIR, ACS_META, ACS_WEB_CSV, ACS_YEAR, TRACT_CSV, TRACT_GPKG, WEB_DATA, publish
 
 YEAR = ACS_YEAR
 STATE = "42"
@@ -221,7 +228,14 @@ def main():
     pd.DataFrame(dictionary, columns=["field", "acs_variable", "description", "source_geography"]) \
         .to_csv(ACS_DIR / "field_dictionary.csv", index=False)
 
-    publish(TRACT_CSV)
+    publish(TRACT_CSV, ACS_WEB_CSV)
+    for old in WEB_DATA.glob("philly_tracts_acs20*.csv"):     # older year-named copies
+        old.unlink()
+        print(f"  removed docs/data/{old.name} (replaced by {ACS_WEB_CSV})")
+    ACS_META.write_text(json.dumps({
+        "year": YEAR, "years": f"{YEAR - 4}-{YEAR}", "release": f"ACS 5-year {YEAR - 4}-{YEAR}",
+        "downloaded": date.today().isoformat(), "tracts": int(len(gdf))}, indent=1), encoding="utf-8")
+    print(f"  wrote docs/data/{ACS_META.name} (ACS {YEAR - 4}-{YEAR})")
     print(f"\nDone. Files written to {ACS_DIR.resolve()}")
 
 

@@ -78,8 +78,9 @@ session = requests.Session()
 
 
 # --------------------------------------------------------------------------- downloads
-def carto(sql, fmt="csv", tries=4):
-    """Run one query against the City's Carto SQL API (POST, so long queries are fine)."""
+def carto(sql, fmt="csv", tries=8):
+    """Run one query against the City's Carto SQL API (POST, so long queries are fine).
+    Carto often times out when busy (query_wait_timeout); waits grow to about 10 minutes in all."""
     for attempt in range(tries):
         try:
             r = session.post(CARTO, data={"q": sql, "format": fmt}, timeout=600)
@@ -88,7 +89,7 @@ def carto(sql, fmt="csv", tries=4):
             msg = r.text[:300]
         except requests.RequestException as err:
             msg = str(err)
-        wait = 5 * (attempt + 1)
+        wait = min(15 * 2 ** attempt, 180)      # 15, 30, 60, 120, 180 ... seconds
         print(f"    Carto request failed ({msg}); retrying in {wait}s")
         time.sleep(wait)
     raise RuntimeError(f"Carto query failed after {tries} tries:\n{sql}")

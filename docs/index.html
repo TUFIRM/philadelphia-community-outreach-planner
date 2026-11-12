@@ -359,7 +359,7 @@
         <div id="demo-source-status" class="demo-status">Loading demographic sources…</div>
         <div class="source-card">
           <h3>Source and QA downloads</h3>
-          <p><a href="data/philly_tracts_acs2024.csv" download>philly_tracts_acs2024.csv</a> — ACS tract totals the model is balanced to.</p>
+          <p><a href="data/philly_tracts_acs.csv" download>philly_tracts_acs.csv</a> — ACS tract totals the model is balanced to.</p>
           <p><a href="data/tract_model_qa.csv" download>tract_model_qa.csv</a> — tract-by-tract model checks.</p>
           <p>Full building model (building summary, OPA crosswalk and GeoPackages): available from FIRM on request at <a href="mailto:firm@temple.edu">firm@temple.edu</a>.</p>
         </div>
@@ -444,7 +444,7 @@ const STYLE_KEY = 'phillyCommunityPlanner.layerStyles.v1';        // localStorag
 const PANEL_KEY = 'phillyCommunityPlanner.panelCollapsed.v1';     // localStorage: side panel hidden?
 const SQM_PER_SQMI = 2589988.11;
 const BASE_PLAN_URL = 'data/Polygons_of_interest.geojson';     // public planning areas; the area of focus is private
-const TRACT_CSV_URL = 'data/philly_tracts_acs2024.csv';
+const TRACT_CSV_URL = 'data/philly_tracts_acs.csv';
 const BUILDING_PARTS_URL = 'data/building_weights_parts.json';  // lists building_weights_web_1.csv, _2.csv, ... (scripts/03)
 const BUILDING_WEIGHTS_URL = 'data/building_weights_web.csv';      // older single file, used if the parts list is missing
 const CITY_GIS = 'https://services.arcgis.com/fLeGjb7u4uXqeF9q/arcgis/rest/services';   // City of Philadelphia ArcGIS Online
@@ -2274,7 +2274,7 @@ async function loadDemographicSources() {
       for (const [k, raw] of Object.entries(row)) { const v = toNum(raw); if (Number.isFinite(v) && v >= 0) vals[k] = v; }
       tractMap.set(geoid, vals);
     }
-    if (!tractMap.size) throw new Error('No tract rows could be read from philly_tracts_acs2024.csv.');
+    if (!tractMap.size) throw new Error('No tract rows could be read from philly_tracts_acs.csv.');
 
     const sample = tractRows[0] || {};
     state.tractFields = {
@@ -2320,7 +2320,7 @@ async function loadDemographicSources() {
     console.error(err);
     state.demographic = { ready: false, error: err.message || String(err) };
     status.className = 'demo-status error';
-    status.innerHTML = `<strong>Demographics are not active yet.</strong> ${esc(state.demographic.error)}<br><br>Add <code>docs/data/philly_tracts_acs2024.csv</code> and the building weights files from <code>scripts/03_prepare_web_data.py</code>.`;
+    status.innerHTML = `<strong>Demographics are not active yet.</strong> ${esc(state.demographic.error)}<br><br>Add <code>docs/data/philly_tracts_acs.csv</code> and the building weights files from <code>scripts/03_prepare_web_data.py</code>.`;
     scheduleUpdate();
   }
 }
@@ -3231,7 +3231,7 @@ $('#area-list').addEventListener('input', e => {
 
 /** The grouped metric tables shown in the Demographics tab. */
 function statsBlock(r) {
-  if (!state.demographic.ready) return `<p class="empty" style="padding:12px 0">Demographics are unavailable until <code>philly_tracts_acs2024.csv</code> and the building weights files load successfully.</p>`;
+  if (!state.demographic.ready) return `<p class="empty" style="padding:12px 0">Demographics are unavailable until <code>philly_tracts_acs.csv</code> and the building weights files load successfully.</p>`;
   if (!r.demo || !r.demo.buildingsUsed) return `<p class="empty" style="padding:12px 0">No modeled residential buildings fall inside this polygon.</p>`;
   const metrics = availableMetrics();
   const groups = [...new Set(metrics.map(m => m.group))];

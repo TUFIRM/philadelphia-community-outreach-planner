@@ -16,6 +16,7 @@ Point the scripts at that folder by setting PLANNER_DATA_DIR in a .env file:
 That folder then needs the same raw/ and processed/ subfolders.
 """
 
+import json
 import os
 import shutil
 from pathlib import Path
@@ -49,7 +50,23 @@ OUTREACH_DIR = PROCESSED / "outreach"
 # Never copied into docs/ and never published.
 PRIVATE_DIR = DATA_DIR / "private_app_files"
 
-ACS_YEAR = 2024
+# ACS 5-year release in use (2024 = the 2020-2024 estimates). Read from docs/data/acs_meta.json,
+# which scripts/01 writes, so a new release needs no code change: update_data.py finds it,
+# sets ACS_YEAR for the run, and script 01 records it. Set ACS_YEAR in .env only to override.
+ACS_META = WEB_DATA / "acs_meta.json"
+ACS_WEB_CSV = "philly_tracts_acs.csv"      # name of the tract file in docs/data (no year in it)
+
+
+def _acs_year(default=2024):
+    if os.environ.get("ACS_YEAR"):
+        return int(os.environ["ACS_YEAR"])
+    try:
+        return int(json.loads(ACS_META.read_text(encoding="utf-8"))["year"])
+    except (OSError, ValueError, KeyError):
+        return default
+
+
+ACS_YEAR = _acs_year()
 
 # Raw inputs (download these yourself, see README)
 OPA_CSV = RAW / "OPA_PROPERTIES_PUBLIC.csv"

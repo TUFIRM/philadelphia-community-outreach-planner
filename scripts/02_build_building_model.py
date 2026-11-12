@@ -21,7 +21,7 @@ Steps
 Inputs  (data/raw/, see README)
     OPA_PROPERTIES_PUBLIC.csv, LI_BUILDING_FOOTPRINTS.geojson,
     Vacant_Indicators_Bldg.geojson, optional group_quarters_buildings.csv
-Needs   data/processed/acs/philly_tracts_acs2024.gpkg  (run script 01 first)
+Needs   data/processed/acs/philly_tracts_acsYYYY.gpkg  (run script 01 first)
 Outputs data/processed/building_model/
 
 This is a MODEL, not address-level Census data.
@@ -34,7 +34,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 
-from common import (BUILDING_POINTS_GPKG, FOOTPRINTS_GEOJSON, GQ_BUILDINGS_CSV, MODEL_DIR,
+from common import (ACS_YEAR, BUILDING_POINTS_GPKG, FOOTPRINTS_GEOJSON, GQ_BUILDINGS_CSV, MODEL_DIR,
                     OPA_CSV, TRACT_GPKG, VACANT_GEOJSON)
 
 # =============================================================================
@@ -61,7 +61,7 @@ UNIVERSITY_PATTERN = r"COLLEGES? & UNIVERSIT|\bCOLLEGE\b|\bUNIVERSITY\b"   # uni
 # Unit estimates from floor area (big apartment buildings with one OPA account and no unit count)
 # are scaled per tract so all housing units add up to the ACS count, within these limits.
 PROXY_SCALE_LIMITS = (0.4, 3.0)
-NEW_BUILD_YEAR = 2020                # buildings this new or newer may postdate the ACS 2020-2024 sample
+NEW_BUILD_YEAR = ACS_YEAR - 4       # buildings this new or newer may postdate the ACS sample (2020 for 2020-2024)
 NEW_BUILD_SHARE_FLAG = 0.10          # flag a tract when they hold this share of its ACS housing units
 
 RES_PATTERN = (r"SINGLE.?FAMILY|TWO.?FAMILY|THREE.?FAMILY|FOUR.?FAMILY|MULTI.?FAMILY|RESIDENT|"

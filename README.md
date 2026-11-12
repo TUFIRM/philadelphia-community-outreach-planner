@@ -10,6 +10,148 @@ GitHub Pages). Outreach members and the proposed area of focus are never on the
 site: users load them from their own computer (see
 [Private files](#private-files-outreach-members-and-the-area-of-focus)).
 
+**New maintainer? Start with [Taking over the project](#taking-over-the-project),
+then all you need each month is [Monthly update](#monthly-update).**
+
+---
+
+## Taking over the project
+
+Do this once, in order, when you take the project over. Steps 1–2 need the
+previous maintainer or a FIRM admin; everything else you do yourself. It takes
+about an hour.
+
+### 1. Get access (ask FIRM or the previous maintainer)
+
+| What | Why | How |
+|---|---|---|
+| The S: drive project folder `S:\Space Management\Projects\GIS - Community Engagement Tracker` (read and write) | The code, the data and the ArcGIS Pro project live here | FIRM / Space Management grants it |
+| A GitHub account, added to the **TUFIRM** organization with write access to this repo | Publishing the site is a push to this repo | Make a free account at <https://github.com>; a TUFIRM owner adds you (org **Settings → People**, repo **Settings → Collaborators and teams**) |
+| ArcGIS Pro (Temple license) and Temple ArcGIS Online | Only for editing the planning-area map or Temple layers. **Not needed for the monthly update** | Temple's Esri license |
+| A contact in Antonio Romero's office | They own the outreach member list and load it themselves | Ask the previous maintainer for the introduction |
+
+### 2. Things the previous maintainer hands over or removes
+
+- [ ] At least one permanent FIRM staff member is an **owner** of the TUFIRM GitHub organization (so the project never depends on a student account).
+- [ ] The previous maintainer's **GitHub access** to TUFIRM is removed after you have pushed once.
+- [ ] Their **Census API key** in `.env` is replaced with yours (step 4).
+- [ ] Contact names in `Documentation\External Documentation` and `Internal Documentation` are changed to the new maintainer (or FIRM).
+- [ ] Optional: the copyright line in `LICENSE` is changed to Temple University / FIRM.
+- [ ] The member list stays with Antonio's office. Old copies on the S: drive (`data\raw\outreach\`, `data\private_app_files\`) are only needed if FIRM still runs script 05; otherwise delete them.
+
+### 3. Install the software on your computer (once)
+
+1. **Python 3.12 or newer** from <https://www.python.org/downloads/>. In the installer tick **"Add python.exe to PATH"**.
+2. **Git for Windows** from <https://git-scm.com/download/win> (default options are fine).
+3. Open a terminal **in the repo folder**: in File Explorer open
+   `S:\Space Management\Projects\GIS - Community Engagement Tracker\philadelphia-community-outreach-planner`,
+   click the address bar, type `cmd` and press Enter. Every command in this README is typed there.
+4. Install the Python packages:
+
+   ```bash
+   python -m pip install -r requirements.txt
+   ```
+
+5. Tell git who you are (your own name and Temple email):
+
+   ```bash
+   git config --global user.name "Your Name"
+   git config --global user.email "you@temple.edu"
+   git config --global --add safe.directory "*"
+   ```
+
+   The last line stops git refusing to work on the S: drive ("dubious ownership").
+
+### 4. Put in your own Census API key (the only key the project uses)
+
+1. Request a free key at <https://api.census.gov/data/key_signup.html> (it arrives by email in minutes).
+2. Open `.env` in the repo folder with Notepad. If there is no `.env`, copy `.env.example` and rename the copy to `.env`.
+3. Make these two lines read:
+
+   ```
+   CENSUS_API_KEY=your_new_key
+   PLANNER_DATA_DIR=S:/Space Management/Projects/GIS - Community Engagement Tracker/data
+   ```
+
+4. Save. `.env` is never committed to GitHub and must not be shared. No other passwords or
+   keys exist: GitHub asks you to sign in in your browser the first time you push.
+
+### 5. Check that everything works
+
+```bash
+python scripts/check_data.py
+```
+
+It should end with `0 failed`. Then do your first [Monthly update](#monthly-update). The first push
+opens a GitHub sign-in window; sign in with the account TUFIRM added. When the run ends with
+`DONE … published`, you have taken over.
+
+### 6. Put two reminders in your calendar
+
+- **Monthly** (any day after the 5th, so the previous month's crime data is out): run the Monthly update.
+- **Every 3 months**: check the police captains (below). The monthly run reminds you when it is due.
+
+---
+
+## Monthly update
+
+**When:** once a month. **Where:** the repo folder. **Time:** about 1–1.5 hours, unattended.
+The computer must stay on and connected to the S: drive.
+
+**How:** double-click **`Run monthly update.bat`** in the repo folder and leave the window open.
+(Or type `python scripts/update_data.py --push` in a terminal in the repo folder; it's the same.)
+
+It does everything on its own, skipping whatever hasn't changed:
+
+| Step | Data | How often it changes |
+|---|---|---|
+| Census | ACS 5-year estimates: checks the Census API for a newer release and downloads it | Once a year (December) |
+| City property data | OPA properties, building footprints, vacant buildings | Weekly |
+| Demographic model | Rebuilt when the Census or property data changed (scripts 02, 03, 08) | Most months |
+| Boundaries | Police districts, ZIP codes, wards, voting divisions (script 04) | Rarely |
+| Crime | Crime incidents, shootings, vehicle and pedestrian stops (script 06) | Monthly |
+| Hand-edited layers | Anything you edited in `data\raw\reference\` (script 07) | When you edit them |
+| Community organizations | FIRM CBO list, OpenStreetMap organizations, City RCOs (script 09) | Monthly |
+| Police stations | Compares station phones with `police_contacts.json` and reports differences | Rarely |
+| Check and publish | `check_data.py`; if every check passes, commits and pushes. The site updates 1–2 minutes later | – |
+
+At the end it prints **`DONE`** and either **"Nothing needs you this month"** or a short
+**`NEEDS A PERSON`** list saying exactly what to do. If a check FAILs, nothing is published and the
+site keeps the previous version; read the FAIL line and see [Troubleshooting](#troubleshooting).
+Each run is also recorded in `data\processed\update_history.txt`.
+
+**The only things that stay manual:**
+
+1. **Police captains, every 3 months** (about 15 minutes). PPD's website blocks automated
+   downloads and no City dataset lists captains, so this can't be automated. Open
+   <https://www.phillypolice.com/district/districts-list/> in your browser, compare each district's
+   captain with `docs\data\police_contacts.json` (open it in Notepad), fix any that changed, and
+   set `"as_of"` at the top to today's date (`"as_of": "2027-01-15"`). Save; the next monthly run
+   publishes it (or double-click `Run monthly update.bat` now). The monthly run warns when the
+   check is more than 90 days old.
+2. **The outreach member list** is updated by Antonio's office in the app (Load private files);
+   FIRM does nothing. Optional: script 05 places more members (see
+   [Updating the outreach file](#updating-the-outreach-file)).
+3. **Only when you change something on purpose**: the CBO list, a reference layer, a planning
+   area or the code. Edit, then run the Monthly update (or see [Updating the site](#updating-the-site)).
+
+Options, if you need them: `--quick` (crime and boundaries only, ~15 min), `--force` (re-download
+and rebuild everything), and without `--push` nothing is published so you can look first
+(`git status`, local preview).
+
+### Troubleshooting
+
+| Message | What to do |
+|---|---|
+| `git pull failed` | Someone changed files here and on GitHub. In the repo folder run `git status`; if only `docs/data` files are listed, run `git checkout -- docs/data` and start again. Otherwise ask FIRM. |
+| `No CENSUS_API_KEY in .env` | Put your key in `.env` ([step 4](#4-put-in-your-own-census-api-key-the-only-key-the-project-uses)). |
+| `… failed (… ConnectionError …)` in NEEDS A PERSON | A City, Census or OpenStreetMap service was down. The old data was kept; run the update again tomorrow. |
+| `FAIL  Private data not published` | A private file got into `docs\`. Delete it from `docs\` and run again. Never push until this passes. |
+| `FAIL` about the building model or ACS totals | Usually a partial download. Run `python scripts/update_data.py --force --push`. |
+| `git push` asks for a password or is refused | Sign in with the GitHub account TUFIRM added; check you have write access to the repo. |
+| Site didn't change | Wait 2 minutes, press Ctrl+F5. On GitHub, the repo's **Actions** tab shows whether the Pages build failed. |
+| Something looks wrong on the site after an update | Undo it: `git log --oneline` to find the "Data refresh" commit, then `git revert <id>` and `git push`. |
+
 ---
 
 ## How the numbers are made
@@ -60,6 +202,7 @@ lists every problem a tract has in its `flag` column (separated by `; `):
 ```
 philadelphia-community-outreach-planner/
 ├── README.md
+├── Run monthly update.bat    double-click once a month (scripts/update_data.py --push)
 ├── DATA_SOURCES.md           every dataset: source link, raw/processed files, internal/external
 ├── requirements.txt          Python packages
 ├── .env.example              copy to .env and fill in (never commit .env)
@@ -148,20 +291,28 @@ Where every dataset comes from, and where to edit it, is in `DATA_SOURCES.md`.
 
 ### Pulling newer City and Census data
 
-`scripts/update_data.py` refreshes the public data, rebuilds what depends on it,
-runs `check_data.py`, and with `--push` commits and pushes `docs/data` only if
-every check passes. It never touches the private files.
+You don't need to run the scripts above one by one: `scripts/update_data.py`
+(the [Monthly update](#monthly-update)) runs whichever are needed, runs
+`check_data.py`, and with `--push` commits and pushes `docs/data` only if every
+check passes. It never touches the private files.
 
 ```bash
-python scripts/update_data.py                 # monthly: crime + boundary layers, then check
-python scripts/update_data.py --push          # ...and commit + push if the checks pass
-python scripts/update_data.py --all --push    # also re-download OPA, footprints and vacancy,
-                                              # and rebuild ACS tracts, model and address lookup
+python scripts/update_data.py --push          # the monthly run (= Run monthly update.bat)
+python scripts/update_data.py                 # same, but publish nothing (look first)
+python scripts/update_data.py --force --push  # re-download and rebuild everything
 ```
 
-`--raw` downloads OPA from the City's bulk file and the footprints and vacancy
-layers from the City's ArcGIS services; `--acs` is for a new ACS 5-year release
-(usually each December).
+It downloads OPA from the City's bulk file and the footprints and vacancy layers
+from the City's ArcGIS services only when the City's copy is newer than ours.
+
+**New ACS release.** The ACS year is not in the code. `docs/data/acs_meta.json`
+records the release in use (`"year": 2024` = 2020–2024); each month
+`update_data.py` asks the Census API whether a newer one exists (one comes out
+each December), and if so runs script 01 for it, rebuilds the model and updates
+`acs_meta.json`. The app always loads `docs/data/philly_tracts_acs.csv`. If the
+Census Bureau renames or drops a variable, script 01 stops with the variable
+name; fix it in the `VARIABLES` list in `scripts/01_download_acs_tracts.py`.
+Tract boundaries change only with the 2030 census (first in the 2026–2030 ACS).
 
 Script 06 downloads every PPD crime incident (2006 on), shooting victim (2015
 on) and vehicle/pedestrian stop (2014 on), snaps each to the nearest street
@@ -176,8 +327,10 @@ intersection, is split evenly among them), keeps complete months per dataset
 `intersection_ties` and `snap_ft_p95`, plus `dup_seg_ids` for the centerlines.
 Since 2023 PPD places records off the centerline (2025: median 54 ft), so
 check `snap_ft_p95` and `not_on_a_street` after each run.
-Police contacts for popups live in `docs/data/police_contacts.json`. Edit it
-by hand when a captain changes (check phillypolice.com).
+Police contacts for popups live in `docs/data/police_contacts.json`. Captains
+are checked by hand every 3 months (see [Monthly update](#monthly-update));
+`update_data.py` compares station phones with the City's `Police_Stations`
+layer, and `check_data.py` warns when `as_of` is over 90 days old.
 
 Script 02 prints an **OPA / footprint diagnostics** block. Check it the first
 time. The earlier model placed only ~85,000 units for ~680,000 households, and
