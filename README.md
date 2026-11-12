@@ -133,9 +133,10 @@ Each run is also recorded in `data\processed\update_history.txt`.
    FIRM does nothing. Optional: script 05 places more members (see
    [Updating the outreach file](#updating-the-outreach-file)).
 3. **Community organizations, whenever you have time**: open
-   `data\processed\community_orgs\cbos_review.xlsx` in Excel (see
+   `data\processed\community_orgs\cbos_to_check.xlsx` in Excel (see
    [Reviewing community organizations](#reviewing-community-organizations)). OpenStreetMap
-   entries nobody has updated in 2+ years are shaded orange; check whether each still operates.
+   entries nobody has updated in 2+ years; check whether each still operates, then make
+   the changes in `cbos_edits.xlsx` (same folder).
 4. **Only when you change something on purpose**: the CBO list, a reference layer, a planning
    area or the code. Edit, then run the Monthly update (or see [Updating the site](#updating-the-site)).
 
@@ -288,7 +289,7 @@ python scripts/05_outreach_heatmap.py           # private outreach file; only wh
 python scripts/06_crime_data.py                 # 20-40 min the first time; monthly after that
 python scripts/07_publish_reference_layers.py   # only after editing data/raw/reference/
 python scripts/08_address_lookup.py             # after refreshing OPA (address lookup for the app)
-python scripts/09_community_orgs.py             # after editing the CBO list or cbos_review.xlsx; also refreshes RCOs
+python scripts/09_community_orgs.py             # after editing the CBO list or cbos_edits.xlsx; also refreshes RCOs
 ```
 
 Where every dataset comes from, and where to edit it, is in `DATA_SOURCES.md`.
@@ -296,30 +297,32 @@ Where every dataset comes from, and where to edit it, is in `DATA_SOURCES.md`.
 ### Reviewing community organizations
 
 OpenStreetMap is often wrong or out of date (a building named "33", a food bank that closed).
-Script 09 writes every organization to **`data\processed\community_orgs\cbos_review.xlsx`**,
-and you correct it **in that workbook**: your edits are read back and kept on every run,
-including the monthly update.
+Script 09 writes two files to `data\processed\community_orgs\`, each with one job:
 
-1. Close the workbook in Excel before a run (script 09 stops and says so if it is open).
-2. Filter on `needs_check`, or look for the **orange rows**: OpenStreetMap entries nobody has
-   updated in 2 years or more. Check each one (website, Google, a phone call).
-3. Fill in, per row:
+| File | What it is for |
+|---|---|
+| **`cbos_to_check.xlsx`** | **Suggestions only.** The rows worth checking, oldest first: OpenStreetMap entries nobody has updated in 2 years or more, and FIRM-list addresses that could not be placed. Each row has an OpenStreetMap link and a Google search link. It is locked and rewritten on every run, so don't type in it. |
+| **`cbos_edits.xlsx`** | **Where you edit**, and the full reference list of every organization. Your edits are read back and kept on every run, including the monthly update. |
+
+1. Open `cbos_to_check.xlsx` and check each row (the links, the website, a phone call).
+2. Open `cbos_edits.xlsx`, find the same `id` (Ctrl+F) and fill in:
    - `decision`: **remove** (closed or not a community organization: off the map) or **keep**
      (on the map, even if a filter left it out). Leave it blank to let the script decide.
-   - `checked`: the date you confirmed it, e.g. 2026-11-12. This clears the orange.
+   - `checked`: the date you confirmed it, e.g. 2026-11-12. The row then drops off
+     `cbos_to_check.xlsx` and is no longer orange.
    - `notes`: anything, e.g. "food pantry closed 2025, called 11/12".
    - Corrections: type over `name`, `type` (pick from the list: Food, Youth & education,
      Seniors, Health & social services, Housing & civic, Arts & culture, Community centers &
      recreation, Faith-based, Other), `address`, `phone`, `email`, `website`, `contact_name`,
      `lat`/`lon` (moves the pin). Cells you changed turn blue after the next run.
-4. Save, close, then run `python scripts\09_community_orgs.py` (or wait for the monthly update).
+3. Save and close both files (script 09 stops and says so if `cbos_edits.xlsx` is open), then
+   run `python scripts\09_community_orgs.py`, or wait for the monthly update.
 
-Don't change the `id` column: it is how your edits find their row again. Leave the hidden
-`_generated` sheet alone (it is what the script wrote, so it can tell your edits apart).
-Organizations on the FIRM list can also be fixed in `data
-aw
-orth_philly_cbos_contacts.csv`.
-Keep a copy of the workbook if you put a lot of work into it: it is outside git.
+Don't change the `id` column in `cbos_edits.xlsx`: it is how your edits find their row again.
+Leave its hidden `_generated` sheet alone (it is what the script wrote, so it can tell your
+edits apart). To add an organization that isn't there at all, add it to the FIRM list,
+`data\raw\north_philly_cbos_contacts.csv`. Keep a copy of `cbos_edits.xlsx` if you put a lot
+of work into it: it is outside git.
 
 ### Pulling newer City and Census data
 
@@ -543,7 +546,7 @@ is private and only ever loaded on the user's own computer (decided
   shelters, nursing homes, recovery residences, unions and fraternities are
   left out. Each organization's type is one of the standard categories below;
   the popup also shows what the source called it. Corrections go in
-  `data/processed/community_orgs/cbos_review.xlsx` (see
+  `data/processed/community_orgs/cbos_edits.xlsx` (see
   [Reviewing community organizations](#reviewing-community-organizations)).
   File: `docs/data/cbos.geojson`.
 - **Registered Community Organizations** (off by default): City RCO boundaries

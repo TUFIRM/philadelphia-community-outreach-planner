@@ -15,7 +15,7 @@ Community organizations in Temple's 8 priority ZIP codes (19121, 19122, 19123,
         Commission boundaries, Zoning_RCO) that touch a priority ZIP
 
 For review before publishing:
-    data/processed/community_orgs/cbos_review.xlsx  every list entry and OSM find,
+    data/processed/community_orgs/cbos_edits.xlsx  every list entry and OSM find,
         with what happened to it (kept, outside the ZIPs, how it was located).
         Edit it directly in Excel (see "the editable review workbook" below):
         decision keep/remove, checked date, corrected name/type/address/contacts/lat/lon.
@@ -48,7 +48,7 @@ UA = {"User-Agent": "Temple FIRM community outreach planner (firm@temple.edu)"}
 # type = the standard category (one of CATEGORIES, or Other); type_detail = what the FIRM list or OpenStreetMap called it
 PUBLISH_COLS = ["name", "type", "type_detail", "categories", "address", "zip", "phone", "email", "website",
                 "contact_name", "contact_title", "source"]
-STALE_YEARS = 2     # OpenStreetMap finds not touched for this long are flagged (orange) in cbos_review.xlsx
+STALE_YEARS = 2     # OpenStreetMap finds not touched for this long are flagged (orange) in cbos_edits.xlsx
 # OpenStreetMap tags that mark community organizations (places of worship and schools are left out)
 OSM_FILTERS = [
     'nwr["amenity"~"^(community_centre|social_facility|social_centre|food_bank)$"]',
@@ -222,7 +222,7 @@ STANDARD_TYPES = [c for c, _ in CATEGORIES] + ["Other"]
 
 def categories(name, kind, forced=""):
     """Up to two standard categories; the first is the organization's standard type.
-    forced = a type set by hand in cbos_review.xlsx (always first)."""
+    forced = a type set by hand in cbos_edits.xlsx (always first)."""
     text = f"{name} | {kind}".lower()
     hits = [c for c, pat in CATEGORIES if re.search(pat, text)]
     if forced:
@@ -293,7 +293,11 @@ def rcos(zips):
 
 
 # ---------------------------------------------------------------- the editable review workbook
-# data/processed/community_orgs/cbos_review.xlsx lists every organization. Edit it directly in Excel:
+# Two files, two jobs:
+#   cbos_to_check.xlsx  WHAT TO CHECK (read-only, rewritten every run): OpenStreetMap entries not
+#                                updated in 2+ years, and FIRM-list addresses that could not be placed
+#   cbos_edits.xlsx     WHERE YOU EDIT: every organization; your edits are kept on every run
+# data/processed/community_orgs/cbos_edits.xlsx lists every organization. Edit it directly in Excel:
 #   decision  remove = leave it off the map; keep = put it on the map even if a filter left it out
 #   checked   the date you confirmed it still operates (clears the orange flag)
 #   notes     anything
@@ -302,7 +306,9 @@ def rcos(zips):
 # Each run reads the workbook first and carries your edits forward by the row's id, so untouched cells
 # still pick up new City / OpenStreetMap data. A hidden sheet (_generated) holds what the script itself
 # wrote last time; a cell that differs from it is your edit. Edited cells are shown in blue.
-REVIEW_XLSX = OUT_DIR / "cbos_review.xlsx"
+REVIEW_XLSX = OUT_DIR / "cbos_edits.xlsx"            # where you edit (and the full reference list)
+# Read-only list of what to check, rewritten on every run. Make the changes in cbos_edits.xlsx.
+SUGGEST_XLSX = OUT_DIR / "cbos_to_check.xlsx"
 EDITABLE = ["name", "type", "type_detail", "address", "zip", "phone", "email", "website",
             "contact_name", "contact_title", "lat", "lon"]
 HAND = ["decision", "checked", "notes"]                 # only ever filled in by a person
@@ -439,6 +445,55 @@ def write_review(review, generated, edited):
                 ws.column_dimensions[get_column_letter(j)].width = min(max(width, 8), 45) + 2
     except PermissionError:
         raise SystemExit(f"{REVIEW_XLSX.name} is open in Excel - close it and run script 09 again")
+    write_suggestions(review)
+
+
+def write_suggestions(review):
+    """cbos_to_check.xlsx: only the rows worth checking, with links, locked so nobody edits it by mistake."""
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+    s = review[review["needs_check"] != ""].copy()
+    nf = review[(review["source"] == "FIRM list") & review["lon"].isna()].copy()
+    nf["needs_check"] = "check: address could not be placed on the map - fix address or lat/lon"
+    s = pd.concat([s, nf])
+    osm = s["id"].str.extract(r"OpenStreetMap (node|way|relation) (\d+)")
+    s["openstreetmap_link"] = ("https://www.openstreetmap.org/" + osm[0] + "/" + osm[1]).fillna("")
+    s["google_search"] = "https://www.google.com/search?q=" + (s["name"] + " " + s["address"].fillna("") +
+                                                              " Philadelphia").str.replace(" ", "+", regex=False)
+    s = s.sort_values(["osm_updated", "name"])
+    cols = ["needs_check", "name", "type", "type_detail", "address", "phone", "website", "osm_updated",
+            "openstreetmap_link", "google_search", "id"]
+    s = s.reindex(columns=cols)
+    note = (f"SUGGESTIONS ONLY - this file is rewritten on every run. To act on a row, open {REVIEW_XLSX.name}, "
+            "find the same id, and fill in decision (keep / remove) and checked (today's date).")
+    try:
+        with pd.ExcelWriter(SUGGEST_XLSX, engine="openpyxl") as xw:
+            s.to_excel(xw, index=False, sheet_name="to check", startrow=2)
+            ws = xw.sheets["to check"]
+            ws["A1"] = note
+            ws["A1"].font = Font(bold=True, color="9A3412")
+            ws["A1"].alignment = Alignment(wrap_text=False)
+            ws["A2"] = f"{len(s)} to check, oldest first. Made {pd.Timestamp.today():%Y-%m-%d}."
+            orange = PatternFill("solid", fgColor="FFC58F")
+            for row in ws.iter_rows(min_row=4, max_row=len(s) + 3):
+                for c in row:
+                    c.fill = orange
+            for c in ws[3]:
+                c.font = Font(bold=True)
+            for n, url in enumerate(s["openstreetmap_link"], start=4):
+                for col in ("openstreetmap_link", "google_search"):
+                    c = ws.cell(row=n, column=cols.index(col) + 1)
+                    if c.value:
+                        c.hyperlink, c.style = c.value, "Hyperlink"
+                        c.fill = orange
+            ws.freeze_panes = "C4"
+            for j, col in enumerate(cols, start=1):
+                width = max([len(col)] + [len(cell(v)) for v in s[col]])
+                ws.column_dimensions[get_column_letter(j)].width = min(max(width, 8), 40) + 2
+            ws.protection.sheet = True                  # read-only: no password, it only prevents accidental edits
+            ws.protection.autoFilter = False
+    except PermissionError:
+        print(f"  WARNING: {SUGGEST_XLSX.name} is open in Excel and was not updated")
 
 
 def main():
@@ -469,8 +524,8 @@ def main():
 
     print("\nFIRM list:", listed["result"].value_counts().to_dict(), "| located by:", listed["located_by"].value_counts().to_dict())
     print("OpenStreetMap:", found["result"].value_counts().to_dict() if len(found) else "nothing found")
-    print(f"docs/data/cbos.geojson: {len(gdf)} organizations; review: {OUT_DIR / 'cbos_review.xlsx'} "
-          f"({int((review['needs_check'] != '').sum())} OpenStreetMap finds flagged orange to check)")
+    print(f"docs/data/cbos.geojson: {len(gdf)} organizations; edits: {REVIEW_XLSX} "
+          f"| to check: {SUGGEST_XLSX} ({int((review['needs_check'] != '').sum())} rows)")
     cats = pub["categories"].str.split(";")
     print("by category (an organization can have two):", cats.explode().value_counts().to_dict(),
           f"| with two categories: {int((cats.str.len() > 1).sum())}")
