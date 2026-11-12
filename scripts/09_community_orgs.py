@@ -15,8 +15,12 @@ Community organizations in Temple's 8 priority ZIP codes (19121, 19122, 19123,
         Commission boundaries, Zoning_RCO) that touch a priority ZIP
 
 For review before publishing:
-    data/processed/community_orgs/cbos_review.csv   every list entry and OSM find,
-        with what happened to it (kept, outside the ZIPs, how it was located)
+    data/processed/community_orgs/cbos_review.xlsx  every list entry and OSM find,
+        with what happened to it (kept, outside the ZIPs, how it was located).
+        Edit it directly in Excel (see "the editable review workbook" below):
+        decision keep/remove, checked date, corrected name/type/address/contacts/lat/lon.
+        Your edits are read back and kept on every run. OpenStreetMap finds not updated
+        in 2+ years are shaded orange until you fill in checked or decision.
 
 Run from the repo root:
     python scripts/09_community_orgs.py
@@ -41,7 +45,10 @@ OVERPASS = "https://overpass-api.de/api/interpreter"
 OVERPASS_URLS = [OVERPASS, "https://overpass.private.coffee/api/interpreter"]   # same backup the app uses
 NOMINATIM = "https://nominatim.openstreetmap.org/search"
 UA = {"User-Agent": "Temple FIRM community outreach planner (firm@temple.edu)"}
-PUBLISH_COLS = ["name", "type", "categories", "address", "zip", "phone", "email", "website", "contact_name", "contact_title", "source"]
+# type = the standard category (one of CATEGORIES, or Other); type_detail = what the FIRM list or OpenStreetMap called it
+PUBLISH_COLS = ["name", "type", "type_detail", "categories", "address", "zip", "phone", "email", "website",
+                "contact_name", "contact_title", "source"]
+STALE_YEARS = 2     # OpenStreetMap finds not touched for this long are flagged (orange) in cbos_review.xlsx
 # OpenStreetMap tags that mark community organizations (places of worship and schools are left out)
 OSM_FILTERS = [
     'nwr["amenity"~"^(community_centre|social_facility|social_centre|food_bank)$"]',
@@ -125,7 +132,7 @@ def load_list(zips, lookup):
 
 def osm_finds(zips):
     w, s, e, n = zips.total_bounds
-    q = "[out:json][timeout:120];(" + "".join(f"{f}({s},{w},{n},{e});" for f in OSM_FILTERS) + ");out center tags;"
+    q = "[out:json][timeout:120];(" + "".join(f"{f}({s},{w},{n},{e});" for f in OSM_FILTERS) + ");out center tags meta;"
     elements, last = None, None
     for attempt in range(6):                  # main server and a backup, a few rounds (Overpass is often busy)
         url = OVERPASS_URLS[attempt % len(OVERPASS_URLS)]
@@ -158,6 +165,8 @@ def osm_finds(zips):
                     "email": t.get("email", t.get("contact:email", "")), "website": t.get("website", t.get("contact:website", "")),
                     "contact_name": "", "contact_title": "", "source": "OpenStreetMap",
                     "lon": round(lon, 6), "lat": round(lat, 6), "located_by": f"OpenStreetMap {el['type']} {el['id']}",
+                    # last time anyone touched it in OSM (or its check_date): shown in the popup so stale entries stand out
+                    "osm_updated": (t.get("check_date") or el.get("timestamp", ""))[:10],
                     "result": "found (new)"})
     return pd.DataFrame(out)
 
@@ -208,9 +217,16 @@ CATEGORIES = [
 ]
 
 
-def categories(name, kind):
+STANDARD_TYPES = [c for c, _ in CATEGORIES] + ["Other"]
+
+
+def categories(name, kind, forced=""):
+    """Up to two standard categories; the first is the organization's standard type.
+    forced = a type set by hand in cbos_review.xlsx (always first)."""
     text = f"{name} | {kind}".lower()
     hits = [c for c, pat in CATEGORIES if re.search(pat, text)]
+    if forced:
+        hits = [forced] + [h for h in hits if h != forced]
     return ";".join(hits[:2]) if hits else "Other"
 
 
@@ -276,6 +292,155 @@ def rcos(zips):
     return touch
 
 
+# ---------------------------------------------------------------- the editable review workbook
+# data/processed/community_orgs/cbos_review.xlsx lists every organization. Edit it directly in Excel:
+#   decision  remove = leave it off the map; keep = put it on the map even if a filter left it out
+#   checked   the date you confirmed it still operates (clears the orange flag)
+#   notes     anything
+#   name, type, type_detail, address, zip, phone, email, website, contact_name, contact_title, lat, lon
+#             type it in and the map uses your value (type must be one of the standard types)
+# Each run reads the workbook first and carries your edits forward by the row's id, so untouched cells
+# still pick up new City / OpenStreetMap data. A hidden sheet (_generated) holds what the script itself
+# wrote last time; a cell that differs from it is your edit. Edited cells are shown in blue.
+REVIEW_XLSX = OUT_DIR / "cbos_review.xlsx"
+EDITABLE = ["name", "type", "type_detail", "address", "zip", "phone", "email", "website",
+            "contact_name", "contact_title", "lat", "lon"]
+HAND = ["decision", "checked", "notes"]                 # only ever filled in by a person
+REVIEW_COLS = ["needs_check", "decision", "checked", "notes", "name", "type", "type_detail", "categories",
+               "address", "zip", "phone", "email", "website", "contact_name", "contact_title", "result",
+               "source", "osm_updated", "located_by", "lat", "lon", "id"]
+
+
+def cell(v, field=""):
+    """A value as text, for comparing what is in the workbook with what the script generated."""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return ""
+    if field in ("lat", "lon"):
+        try:
+            return f"{float(v):.6f}"
+        except ValueError:
+            return str(v).strip()
+    if hasattr(v, "strftime"):
+        return v.strftime("%Y-%m-%d")
+    s = str(v).strip()
+    return s[:-2] if field == "zip" and s.endswith(".0") else s
+
+
+def read_edits():
+    """id -> {field: value} for every cell a person changed in the workbook, plus decision / checked / notes."""
+    if not REVIEW_XLSX.exists():
+        return {}
+    try:
+        book = pd.read_excel(REVIEW_XLSX, sheet_name=None, dtype=object)
+    except PermissionError:
+        raise SystemExit(f"{REVIEW_XLSX.name} is locked - close it in Excel and run script 09 again "
+                         "(your edits in it are read on every run)")
+    seen, gen = book.get("review"), book.get("_generated")
+    if seen is None or "id" not in seen:
+        return {}
+    gen = {cell(r["id"]): r for _, r in gen.iterrows()} if gen is not None and "id" in gen else {}
+    edits = {}
+    for _, r in seen.iterrows():
+        rid = cell(r["id"])
+        if not rid:
+            continue
+        g, e = gen.get(rid), {}
+        for f in HAND:
+            if f in r and cell(r[f]):
+                e[f] = cell(r[f])
+        for f in EDITABLE:
+            if f in r and g is not None and f in g and cell(r[f], f) != cell(g[f], f):
+                e[f] = cell(r[f], f)
+        if e:
+            edits[rid] = e
+    return edits
+
+
+def apply_edits(review, edits):
+    """Put a person's edits on top of the freshly generated rows. Returns the rows and the set of edited cells."""
+    edited, gone = set(), []
+    index = {rid: i for i, rid in review["id"].items()}
+    for rid, e in edits.items():
+        i = index.get(rid)
+        if i is None:
+            gone.append(rid)
+            continue
+        for f, v in e.items():
+            if f == "type" and v and v not in STANDARD_TYPES:
+                print(f"  {review.at[i, 'name']}: type {v!r} is not a standard type {STANDARD_TYPES} - ignored")
+                continue
+            if f in ("lat", "lon"):
+                try:
+                    v = float(v)
+                except ValueError:
+                    print(f"  {review.at[i, 'name']}: {f} {v!r} is not a number - ignored")
+                    continue
+            review.at[i, f] = v
+            if f in EDITABLE:
+                edited.add((i, f))
+        if (i, "type") in edited or (i, "name") in edited or (i, "type_detail") in edited:
+            forced = review.at[i, "type"] if (i, "type") in edited else ""
+            review.at[i, "categories"] = categories(review.at[i, "name"], review.at[i, "type_detail"], forced)
+            review.at[i, "type"] = review.at[i, "categories"].split(";")[0]
+        d = str(review.at[i, "decision"]).strip().lower()
+        if d == "remove":
+            review.at[i, "result"] = "left out: removed in the review"
+        elif d == "keep" and not review.at[i, "result"] in ("kept", "found (new)"):
+            review.at[i, "result"] = "kept (review)"
+        elif d and d not in ("keep", "remove"):
+            print(f"  {review.at[i, 'name']}: decision {d!r} should be keep or remove - ignored")
+    for rid in gone:
+        print(f"  edited row no longer found (removed from OpenStreetMap or the FIRM list): {rid} {edits[rid]}")
+    return review, edited
+
+
+def needs_check(r):
+    """Flag OpenStreetMap finds nobody has updated in STALE_YEARS, until someone fills in checked or decision."""
+    if r["source"] != "OpenStreetMap" or r["result"] != "found (new)" or r["checked"] or r["decision"]:
+        return ""
+    upd = str(r["osm_updated"] or "")
+    if not re.match(r"\d{4}-\d{2}-\d{2}", upd):
+        return "check: no update date in OpenStreetMap"
+    age = (pd.Timestamp.today() - pd.Timestamp(upd)).days / 365.25
+    return f"check: last updated in OpenStreetMap {upd[:7]} ({age:.1f} years ago)" if age >= STALE_YEARS else ""
+
+
+def write_review(review, generated, edited):
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
+    review = review.reindex(columns=REVIEW_COLS).reset_index(drop=True)
+    pos = {i: n for n, i in enumerate(generated.index)}
+    try:
+        with pd.ExcelWriter(REVIEW_XLSX, engine="openpyxl") as xw:
+            review.to_excel(xw, index=False, sheet_name="review")
+            generated.reindex(columns=["id"] + EDITABLE).to_excel(xw, index=False, sheet_name="_generated")
+            ws = xw.sheets["review"]
+            xw.sheets["_generated"].sheet_state = "hidden"
+            orange, blue = PatternFill("solid", fgColor="FFC58F"), PatternFill("solid", fgColor="BDD7EE")
+            for n, flag in enumerate(review["needs_check"], start=2):
+                if flag:
+                    for c in ws[n]:
+                        c.fill = orange
+            for i, f in edited:
+                ws.cell(row=pos[i] + 2, column=REVIEW_COLS.index(f) + 1).fill = blue
+            for c in ws[1]:
+                c.font = Font(bold=True)
+            last = len(review) + 1
+            for col, choices in [("decision", "keep,remove"), ("type", ",".join(STANDARD_TYPES))]:
+                dv = DataValidation(type="list", formula1=f'"{choices}"', allow_blank=True)
+                ws.add_data_validation(dv)
+                letter = get_column_letter(REVIEW_COLS.index(col) + 1)
+                dv.add(f"{letter}2:{letter}{last + 200}")
+            ws.freeze_panes = "F2"
+            ws.auto_filter.ref = ws.dimensions
+            for j, col in enumerate(REVIEW_COLS, start=1):
+                width = max([len(col)] + [len(cell(v)) for v in review[col]])
+                ws.column_dimensions[get_column_letter(j)].width = min(max(width, 8), 45) + 2
+    except PermissionError:
+        raise SystemExit(f"{REVIEW_XLSX.name} is open in Excel - close it and run script 09 again")
+
+
 def main():
     zips = priority_zips()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -283,18 +448,29 @@ def main():
     listed = load_list(zips, opa_points())
     print("Searching OpenStreetMap ...")
     found = screen(drop_duplicates_of_list(osm_finds(zips), listed[listed["result"] == "kept"]))
+    edits = read_edits()                           # read your edits before anything is rewritten
     review = pd.concat([listed, found], ignore_index=True)
-    review.to_csv(OUT_DIR / "cbos_review.csv", index=False)
-
-    review["categories"] = [categories(n, k) for n, k in zip(review["name"], review["type"])]
-    pub = review[review["result"].isin(["kept", "found (new)"]) & review["lon"].notna()]
-    gdf = gpd.GeoDataFrame(pub[PUBLISH_COLS], geometry=gpd.points_from_xy(pub["lon"], pub["lat"]), crs=4326)
+    review["id"] = review["located_by"].where(review["source"] == "OpenStreetMap", "FIRM list: " + review["name"])
+    for c in ["decision", "checked", "notes"]:
+        review[c] = ""
+    review = review.fillna({c: "" for c in ["name", "type", "osm_updated", "source", "result"]})
+    review["type_detail"] = review["type"]           # what the FIRM list / OpenStreetMap called it
+    review["categories"] = [categories(n, k) for n, k in zip(review["name"], review["type_detail"])]
+    review["type"] = review["categories"].str.split(";").str[0]
+    generated = review.copy()
+    review, edited = apply_edits(review, edits)
+    review["needs_check"] = review.apply(needs_check, axis=1)
+    write_review(review, generated, edited)
+    print(f"Review edits: {len(edits)} rows carried forward, {len(edited)} edited cells")
+    pub = review[review["result"].isin(["kept", "found (new)", "kept (review)"]) & review["lon"].notna()]
+    gdf = gpd.GeoDataFrame(pub.reindex(columns=PUBLISH_COLS).fillna(""), geometry=gpd.points_from_xy(pub["lon"], pub["lat"]), crs=4326)
     gdf.to_file(WEB_DATA / "cbos.geojson", driver="GeoJSON", COORDINATE_PRECISION=6)
     rcos(zips).to_file(WEB_DATA / "rcos.geojson", driver="GeoJSON", COORDINATE_PRECISION=6)
 
     print("\nFIRM list:", listed["result"].value_counts().to_dict(), "| located by:", listed["located_by"].value_counts().to_dict())
     print("OpenStreetMap:", found["result"].value_counts().to_dict() if len(found) else "nothing found")
-    print(f"docs/data/cbos.geojson: {len(gdf)} organizations; review file: {OUT_DIR / 'cbos_review.csv'}")
+    print(f"docs/data/cbos.geojson: {len(gdf)} organizations; review: {OUT_DIR / 'cbos_review.xlsx'} "
+          f"({int((review['needs_check'] != '').sum())} OpenStreetMap finds flagged orange to check)")
     cats = pub["categories"].str.split(";")
     print("by category (an organization can have two):", cats.explode().value_counts().to_dict(),
           f"| with two categories: {int((cats.str.len() > 1).sum())}")

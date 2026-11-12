@@ -132,7 +132,11 @@ Each run is also recorded in `data\processed\update_history.txt`.
 2. **The outreach member list** is updated by Antonio's office in the app (Load private files);
    FIRM does nothing. Optional: script 05 places more members (see
    [Updating the outreach file](#updating-the-outreach-file)).
-3. **Only when you change something on purpose**: the CBO list, a reference layer, a planning
+3. **Community organizations, whenever you have time**: open
+   `data\processed\community_orgs\cbos_review.xlsx` in Excel (see
+   [Reviewing community organizations](#reviewing-community-organizations)). OpenStreetMap
+   entries nobody has updated in 2+ years are shaded orange; check whether each still operates.
+4. **Only when you change something on purpose**: the CBO list, a reference layer, a planning
    area or the code. Edit, then run the Monthly update (or see [Updating the site](#updating-the-site)).
 
 Options, if you need them: `--quick` (crime and boundaries only, ~15 min), `--force` (re-download
@@ -284,10 +288,38 @@ python scripts/05_outreach_heatmap.py           # private outreach file; only wh
 python scripts/06_crime_data.py                 # 20-40 min the first time; monthly after that
 python scripts/07_publish_reference_layers.py   # only after editing data/raw/reference/
 python scripts/08_address_lookup.py             # after refreshing OPA (address lookup for the app)
-python scripts/09_community_orgs.py             # after editing the CBO list; also refreshes RCOs
+python scripts/09_community_orgs.py             # after editing the CBO list or cbos_review.xlsx; also refreshes RCOs
 ```
 
 Where every dataset comes from, and where to edit it, is in `DATA_SOURCES.md`.
+
+### Reviewing community organizations
+
+OpenStreetMap is often wrong or out of date (a building named "33", a food bank that closed).
+Script 09 writes every organization to **`data\processed\community_orgs\cbos_review.xlsx`**,
+and you correct it **in that workbook**: your edits are read back and kept on every run,
+including the monthly update.
+
+1. Close the workbook in Excel before a run (script 09 stops and says so if it is open).
+2. Filter on `needs_check`, or look for the **orange rows**: OpenStreetMap entries nobody has
+   updated in 2 years or more. Check each one (website, Google, a phone call).
+3. Fill in, per row:
+   - `decision`: **remove** (closed or not a community organization: off the map) or **keep**
+     (on the map, even if a filter left it out). Leave it blank to let the script decide.
+   - `checked`: the date you confirmed it, e.g. 2026-11-12. This clears the orange.
+   - `notes`: anything, e.g. "food pantry closed 2025, called 11/12".
+   - Corrections: type over `name`, `type` (pick from the list: Food, Youth & education,
+     Seniors, Health & social services, Housing & civic, Arts & culture, Community centers &
+     recreation, Faith-based, Other), `address`, `phone`, `email`, `website`, `contact_name`,
+     `lat`/`lon` (moves the pin). Cells you changed turn blue after the next run.
+4. Save, close, then run `python scripts\09_community_orgs.py` (or wait for the monthly update).
+
+Don't change the `id` column: it is how your edits find their row again. Leave the hidden
+`_generated` sheet alone (it is what the script wrote, so it can tell your edits apart).
+Organizations on the FIRM list can also be fixed in `data
+aw
+orth_philly_cbos_contacts.csv`.
+Keep a copy of the workbook if you put a lot of work into it: it is outside git.
 
 ### Pulling newer City and Census data
 
@@ -509,8 +541,11 @@ is private and only ever loaded on the user's own computer (decided
   8 priority ZIP codes. Colored by type (a two-color dot = two types; a dark
   outline = on the FIRM list); click one for its contact details. Homes,
   shelters, nursing homes, recovery residences, unions and fraternities are
-  left out. Script 09 also writes `data/processed/community_orgs/cbos_review.csv`
-  for checking what was added. File: `docs/data/cbos.geojson`.
+  left out. Each organization's type is one of the standard categories below;
+  the popup also shows what the source called it. Corrections go in
+  `data/processed/community_orgs/cbos_review.xlsx` (see
+  [Reviewing community organizations](#reviewing-community-organizations)).
+  File: `docs/data/cbos.geojson`.
 - **Registered Community Organizations** (off by default): City RCO boundaries
   that touch a priority ZIP, each in its own color. Click one for its name,
   meeting place, primary and alternate contacts and demographics. Contacts'

@@ -533,7 +533,7 @@ function orgContactHtml(p, kind) {
   const lines = [
     `<strong>${esc(tidy(p.name) || (kind === 'rco' ? 'Registered Community Organization' : 'Community organization'))}</strong>`,
     kind === 'rco' ? grey(`Registered Community Organization${tidy(p.org_type) ? ` · ${esc(tidy(p.org_type))}` : ''}`)
-      : tidy(p.type) && grey(esc(tidy(p.type))),
+      : tidy(p.type_detail || p.type) && grey(esc(tidy(p.type_detail || p.type))),
     cats.length && cats.map(c => `<span style="white-space:nowrap"><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${CBO_COLOR[c]};margin-right:3px"></i>${esc(c)}</span>`).join(' &nbsp;'),
     tidy(p.address) && esc(tidy(p.address)),
     tidy(p.meeting_location) && `Meets at: ${esc(tidy(p.meeting_location))}`,
