@@ -495,9 +495,10 @@ const CBO_CATEGORIES = [
 ];
 const CBO_COLOR = Object.fromEntries(CBO_CATEGORIES);
 const cboCats = f => String((f.properties || {}).categories || '').split(';').filter(c => CBO_COLOR[c]);
-/** One color, or a half-and-half split when an organization is in two categories. */
+/** One color, a half-and-half split for two categories, or pie slices for three or more. */
 function cboFill(f) {
   const c = cboCats(f).map(k => CBO_COLOR[k]);
+  if (c.length > 2) return `conic-gradient(${c.map((x, i) => `${x} ${(i * 100 / c.length).toFixed(2)}% ${((i + 1) * 100 / c.length).toFixed(2)}%`).join(', ')})`;
   return c.length > 1 ? `linear-gradient(90deg, ${c[0]} 50%, ${c[1]} 50%)` : (c[0] || '#7F7F7F');
 }
 function cboMarker(f, ll) {
@@ -508,7 +509,7 @@ function cboMarker(f, ll) {
 }
 function cboLegendHtml() {
   return `<div class="poi-legend">${CBO_CATEGORIES.map(([k, c]) => `<span><i style="background:${c}"></i>${esc(k)}</span>`).join('')}
-    <span><i style="background:linear-gradient(90deg, #D55E00 50%, #7A5195 50%)"></i>Two colors = two categories</span>
+    <span><i style="background:linear-gradient(90deg, #D55E00 50%, #7A5195 50%)"></i>Split colors = more than one category</span>
     <span><i style="background:#fff;box-shadow:0 0 0 2px #1F2933 inset"></i>Dark outline = on the FIRM contact list</span></div>`;
 }
 const RCO_PALETTE = ['#E6194B', '#3CB44B', '#4363D8', '#F58231', '#911EB4', '#42D4F4', '#F032E6', '#7BA400',

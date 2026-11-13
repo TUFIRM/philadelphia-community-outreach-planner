@@ -199,7 +199,8 @@ def screen(found):
     return found
 
 
-# Map categories, in priority order: an organization shows its first two matches (split symbol).
+# Map categories, in priority order: the script guesses up to two (split symbol); a person can set
+# any number in the type column of cbos_edits.xlsx.
 CATEGORIES = [
     ("Food", r"food|pantry|kitchen|philabundance|care closet|feeding"),
     ("Youth & education", r"youth|teen|child|kids|boys & girls|school|learning|education|college|cyber village|\bpal\b|athletic|idaay"),
@@ -220,14 +221,25 @@ CATEGORIES = [
 STANDARD_TYPES = [c for c, _ in CATEGORIES] + ["Other"]
 
 
-def categories(name, kind, forced=""):
-    """Up to two standard categories; the first is the organization's standard type.
-    forced = a type set by hand in cbos_edits.xlsx (always first)."""
+def categories(name, kind):
+    """Up to two standard categories guessed from the name and the source's own description.
+    A person can set any number in the type column of cbos_edits.xlsx (see parse_types)."""
     text = f"{name} | {kind}".lower()
     hits = [c for c, pat in CATEGORIES if re.search(pat, text)]
-    if forced:
-        hits = [forced] + [h for h in hits if h != forced]
     return ";".join(hits[:2]) if hits else "Other"
+
+
+def parse_types(text):
+    """'Food; Faith-based' (or commas) -> (['Food', 'Faith-based'], [parts that are not standard types])."""
+    by_lower = {t.lower(): t for t in STANDARD_TYPES}
+    good, bad = [], []
+    for part in re.split(r"[;,]", str(text)):
+        part = part.strip()
+        if not part:
+            continue
+        t = by_lower.get(part.lower())
+        (good if t else bad).append(t or part)
+    return list(dict.fromkeys(good)), bad
 
 
 def norm(s):
@@ -302,17 +314,19 @@ def rcos(zips):
 #   checked   the date you confirmed it still operates (clears the orange flag)
 #   notes     anything
 #   name, type, type_detail, address, zip, phone, email, website, contact_name, contact_title, lat, lon
-#             type it in and the map uses your value (type must be one of the standard types)
+#             type it in and the map uses your value. type = one or more standard types separated
+#             by ; (e.g. "Food; Faith-based"); the map pin is split into one color per type
 # Each run reads the workbook first and carries your edits forward by the row's id, so untouched cells
 # still pick up new City / OpenStreetMap data. A hidden sheet (_generated) holds what the script itself
-# wrote last time; a cell that differs from it is your edit. Edited cells are shown in blue.
+# wrote last time; a cell that differs from it is your edit. Edited cells turn blue as you type
+# (conditional formatting against _generated), and decision / checked / notes are blue when filled in.
 REVIEW_XLSX = OUT_DIR / "cbos_edits.xlsx"            # where you edit (and the full reference list)
 # Read-only list of what to check, rewritten on every run. Make the changes in cbos_edits.xlsx.
 SUGGEST_XLSX = OUT_DIR / "cbos_to_check.xlsx"
 EDITABLE = ["name", "type", "type_detail", "address", "zip", "phone", "email", "website",
             "contact_name", "contact_title", "lat", "lon"]
 HAND = ["decision", "checked", "notes"]                 # only ever filled in by a person
-REVIEW_COLS = ["needs_check", "decision", "checked", "notes", "name", "type", "type_detail", "categories",
+REVIEW_COLS = ["needs_check", "decision", "checked", "notes", "name", "type", "type_detail",
                "address", "zip", "phone", "email", "website", "contact_name", "contact_title", "result",
                "source", "osm_updated", "located_by", "lat", "lon", "id"]
 
@@ -372,9 +386,14 @@ def apply_edits(review, edits):
             gone.append(rid)
             continue
         for f, v in e.items():
-            if f == "type" and v and v not in STANDARD_TYPES:
-                print(f"  {review.at[i, 'name']}: type {v!r} is not a standard type {STANDARD_TYPES} - ignored")
-                continue
+            if f == "type":
+                good, bad = parse_types(v)
+                if bad:
+                    print(f"  {review.at[i, 'name']}: {bad} not standard types {STANDARD_TYPES} - ignored")
+                if not good:
+                    continue
+                review.at[i, "categories"] = ";".join(good)
+                v = "; ".join(good)
             if f in ("lat", "lon"):
                 try:
                     v = float(v)
@@ -384,10 +403,9 @@ def apply_edits(review, edits):
             review.at[i, f] = v
             if f in EDITABLE:
                 edited.add((i, f))
-        if (i, "type") in edited or (i, "name") in edited or (i, "type_detail") in edited:
-            forced = review.at[i, "type"] if (i, "type") in edited else ""
-            review.at[i, "categories"] = categories(review.at[i, "name"], review.at[i, "type_detail"], forced)
-            review.at[i, "type"] = review.at[i, "categories"].split(";")[0]
+        if (i, "type") not in edited and ((i, "name") in edited or (i, "type_detail") in edited):
+            review.at[i, "categories"] = categories(review.at[i, "name"], review.at[i, "type_detail"])
+            review.at[i, "type"] = review.at[i, "categories"].replace(";", "; ")
         d = str(review.at[i, "decision"]).strip().lower()
         if d == "remove":
             review.at[i, "result"] = "left out: removed in the review"
@@ -412,32 +430,47 @@ def needs_check(r):
 
 
 def write_review(review, generated, edited):
+    from openpyxl.formatting.rule import FormulaRule
     from openpyxl.styles import Font, PatternFill
     from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.datavalidation import DataValidation
     review = review.reindex(columns=REVIEW_COLS).reset_index(drop=True)
-    pos = {i: n for n, i in enumerate(generated.index)}
     try:
         with pd.ExcelWriter(REVIEW_XLSX, engine="openpyxl") as xw:
             review.to_excel(xw, index=False, sheet_name="review")
             generated.reindex(columns=["id"] + EDITABLE).to_excel(xw, index=False, sheet_name="_generated")
             ws = xw.sheets["review"]
             xw.sheets["_generated"].sheet_state = "hidden"
-            orange, blue = PatternFill("solid", fgColor="FFC58F"), PatternFill("solid", fgColor="BDD7EE")
+            orange = PatternFill("solid", fgColor="FFC58F")
+            blue = PatternFill("solid", start_color="BDD7EE", end_color="BDD7EE")   # conditional formats use bgColor
             for n, flag in enumerate(review["needs_check"], start=2):
                 if flag:
                     for c in ws[n]:
                         c.fill = orange
-            for i, f in edited:
-                ws.cell(row=pos[i] + 2, column=REVIEW_COLS.index(f) + 1).fill = blue
             for c in ws[1]:
                 c.font = Font(bold=True)
             last = len(review) + 1
-            for col, choices in [("decision", "keep,remove"), ("type", ",".join(STANDARD_TYPES))]:
-                dv = DataValidation(type="list", formula1=f'"{choices}"', allow_blank=True)
-                ws.add_data_validation(dv)
-                letter = get_column_letter(REVIEW_COLS.index(col) + 1)
-                dv.add(f"{letter}2:{letter}{last + 200}")
+            # blue = a manual change, live while you type: a cell that differs from what the script wrote
+            # (looked up by id in the hidden _generated sheet, so sorting the sheet is fine)
+            letter = lambda col: get_column_letter(REVIEW_COLS.index(col) + 1)
+            idc = letter("id")
+            for k, f in enumerate(EDITABLE):
+                L, G = letter(f), get_column_letter(k + 2)
+                rule = FormulaRule(formula=[f'IFERROR(${idc}2<>"",FALSE)*IFERROR({L}2&""<>INDEX(_generated!${G}:${G},'
+                                            f'MATCH(${idc}2,_generated!$A:$A,0))&"",FALSE)'], fill=blue)
+                ws.conditional_formatting.add(f"{L}2:{L}{last}", rule)
+            for f in HAND:
+                L = letter(f)
+                ws.conditional_formatting.add(f"{L}2:{L}{last}", FormulaRule(formula=[f'LEN({L}2)>0'], fill=blue))
+            dv = DataValidation(type="list", formula1='"keep,remove"', allow_blank=True)
+            ws.add_data_validation(dv)
+            dv.add(f"{letter('decision')}2:{letter('decision')}{last}")
+            # type: pick one from the list, or type several separated by ; (so no error on other values)
+            dv = DataValidation(type="list", formula1='"' + ",".join(STANDARD_TYPES) + '"', allow_blank=True,
+                                showErrorMessage=False, showInputMessage=True, promptTitle="type",
+                                prompt="Pick one, or type several separated by ;  e.g. Food; Faith-based")
+            ws.add_data_validation(dv)
+            dv.add(f"{letter('type')}2:{letter('type')}{last}")
             ws.freeze_panes = "F2"
             ws.auto_filter.ref = ws.dimensions
             for j, col in enumerate(REVIEW_COLS, start=1):
@@ -511,7 +544,7 @@ def main():
     review = review.fillna({c: "" for c in ["name", "type", "osm_updated", "source", "result"]})
     review["type_detail"] = review["type"]           # what the FIRM list / OpenStreetMap called it
     review["categories"] = [categories(n, k) for n, k in zip(review["name"], review["type_detail"])]
-    review["type"] = review["categories"].str.split(";").str[0]
+    review["type"] = review["categories"].str.replace(";", "; ", regex=False)
     generated = review.copy()
     review, edited = apply_edits(review, edits)
     review["needs_check"] = review.apply(needs_check, axis=1)

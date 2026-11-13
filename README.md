@@ -311,10 +311,15 @@ Script 09 writes two files to `data\processed\community_orgs\`, each with one jo
    - `checked`: the date you confirmed it, e.g. 2026-11-12. The row then drops off
      `cbos_to_check.xlsx` and is no longer orange.
    - `notes`: anything, e.g. "food pantry closed 2025, called 11/12".
-   - Corrections: type over `name`, `type` (pick from the list: Food, Youth & education,
-     Seniors, Health & social services, Housing & civic, Arts & culture, Community centers &
-     recreation, Faith-based, Other), `address`, `phone`, `email`, `website`, `contact_name`,
-     `lat`/`lon` (moves the pin). Cells you changed turn blue after the next run.
+   - Corrections: type over `name`, `address`, `phone`, `email`, `website`, `contact_name`,
+     `lat`/`lon` (moves the pin).
+   - `type`: one or more of Food, Youth & education, Seniors, Health & social services,
+     Housing & civic, Arts & culture, Community centers & recreation, Faith-based, Other.
+     Pick one from the dropdown, or type several separated by `;` for a place that offers
+     more than one, e.g. `Food; Faith-based; Seniors`. The map pin is split into one color
+     per type.
+   - Every cell you change turns **blue** as soon as you type it (and stays blue on later
+     runs), so you can always see what was changed by hand.
 3. Save and close both files (script 09 stops and says so if `cbos_edits.xlsx` is open), then
    run `python scripts\09_community_orgs.py`, or wait for the monthly update.
 
@@ -541,7 +546,7 @@ is private and only ever loaded on the user's own computer (decided
 - **Community Organizations** (off by default): the FIRM CBO list
   (`data/raw/north_philly_cbos_contacts.csv`) plus community centers, food
   pantries and service organizations found in OpenStreetMap, limited to the
-  8 priority ZIP codes. Colored by type (a two-color dot = two types; a dark
+  8 priority ZIP codes. Colored by type (a split dot = more than one type; a dark
   outline = on the FIRM list); click one for its contact details. Homes,
   shelters, nursing homes, recovery residences, unions and fraternities are
   left out. Each organization's type is one of the standard categories below;
