@@ -44,7 +44,7 @@ about an hour.
 1. **Python 3.12 or newer** from <https://www.python.org/downloads/>. In the installer tick **"Add python.exe to PATH"**.
 2. **Git for Windows** from <https://git-scm.com/download/win> (default options are fine).
 3. Open Command Prompt and navigate to the repository folder:
-cd "S:\Space Management\Projects\GIS - Community Engagement Tracker\philadelphia-community-outreach-planner"
+cd /d "S:\Space Management\Projects\GIS - Community Engagement Tracker\philadelphia-community-outreach-planner"
 4. Install the Python packages:
 
    ```bash
