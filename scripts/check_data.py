@@ -14,9 +14,41 @@ What it checks
   * crime data (2014 on): month list, offense list, areas.json, segments.json, seg_YYYY.json,
     that month numbers point at the right year, and how much of each year lands on streets
 """
-import csv, json, sys
+import atexit, csv, json, os, sys
 from collections import defaultdict
 from pathlib import Path
+
+
+def _own_console_window():
+    """True when Windows opened a console just for this script (double-clicked .py), which closes
+    the moment Python exits. False in cmd / PowerShell / a terminal, or when another script
+    (update_data.py) captures the output."""
+    if os.name != 'nt' or not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        pids = (wintypes.DWORD * 64)()
+        n = k32.GetConsoleProcessList(pids, 64)
+        for pid in pids[:min(n, 64)]:
+            h = k32.OpenProcess(0x1000, False, pid)          # PROCESS_QUERY_LIMITED_INFORMATION
+            if not h:
+                continue
+            buf, size = ctypes.create_unicode_buffer(260), wintypes.DWORD(260)
+            ok = k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size))
+            k32.CloseHandle(h)
+            name = Path(buf.value).name.lower() if ok else ''
+            if name and not name.startswith(('python', 'py.exe', 'pyw', 'conhost', 'openconsole')):
+                return False                                  # a shell (cmd, powershell, bash...) shares the window
+        return True
+    except Exception:
+        return False
+
+
+if _own_console_window():
+    # runs after the report, and after a crash's error message, so the window stays readable
+    atexit.register(lambda: input('\nPress Enter to close this window...'))
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / 'docs' / 'data'
